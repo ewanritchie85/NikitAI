@@ -12,7 +12,7 @@ from .tools import outlook
 
 MODEL = "claude-opus-4-5"
 
-SYSTEM_PROMPT = """You are Nikita, a personal assistant with access to the user's Outlook email and calendar.
+SYSTEM_PROMPT = """You are NikitAI, a personal assistant with access to the user's Outlook email and calendar.
 
 You can:
 - List and read emails
@@ -127,7 +127,7 @@ def run_agent() -> None:
     client = anthropic.Anthropic(api_key=api_key)
     token = get_access_token()
 
-    print("Nikita is ready. Type 'quit' to exit.\n")
+    print("NikitAI is ready. Type 'quit' to exit.\n")
     messages: list[dict] = []
 
     while True:
@@ -165,7 +165,7 @@ def run_agent() -> None:
                     })
 
             if assistant_text:
-                print(f"\nNikita: {assistant_text}\n")
+                print(f"\nNikitAI: {assistant_text}\n")
 
             # Append assistant turn
             messages.append({"role": "assistant", "content": response.content})

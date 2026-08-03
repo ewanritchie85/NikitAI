@@ -1,9 +1,5 @@
-from nikita.cli import greet
+from nikitai.cli import main
 
 
-def test_greet_default():
-    assert greet() == "Hello, World!"
-
-
-def test_greet_name():
-    assert greet("Alice") == "Hello, Alice!"
+def test_main_importable():
+    assert callable(main)

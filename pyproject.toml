@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nikita"
+name = "nikitai"
 version = "0.1.0"
-description = "A minimal Python project scaffold"
+description = "AI-powered personal assistant"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [ { name = "Your Name", email = "you@example.com" } ]

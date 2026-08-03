@@ -1,6 +1,6 @@
-# Nikita
+# NikitAI
 
-A minimal Python project scaffold.
+AI-powered personal assistant using Claude API with Outlook email and calendar access.
 
 Quickstart
 ---------
@@ -14,11 +14,13 @@ Quickstart
 
    pip install -r requirements.txt
 
-3. Run:
+3. Copy `.env.example` to `.env` and fill in your keys (see `.env.example`).
 
-   python -m nikita --name Alice
+4. Run:
 
-4. Test:
+   python -m nikitai
+
+5. Test:
 
    pytest
 

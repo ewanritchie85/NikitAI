@@ -5,7 +5,7 @@ from pathlib import Path
 
 import msal
 
-_TOKEN_CACHE_PATH = Path.home() / ".nikita_token_cache.json"
+_TOKEN_CACHE_PATH = Path.home() / ".nikitai_token_cache.json"
 
 SCOPES = [
     "Mail.Read",
