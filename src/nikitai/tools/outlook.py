@@ -1,6 +1,7 @@
 """Microsoft Graph API wrappers for Outlook email and calendar."""
 from __future__ import annotations
 
+import calendar
 from datetime import datetime, timezone
 from typing import Any
 
@@ -87,7 +88,13 @@ def list_calendar_events(
 ) -> list[dict]:
     now = datetime.now(timezone.utc)
     start_dt = start or now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    end_dt = end or now.replace(month=now.month % 12 + 1).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if end:
+        end_dt = end
+    else:
+        month = now.month % 12 + 1
+        year = now.year + (1 if now.month == 12 else 0)
+        day = min(now.day, calendar.monthrange(year, month)[1])
+        end_dt = now.replace(year=year, month=month, day=day).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     data = _get(
         token,

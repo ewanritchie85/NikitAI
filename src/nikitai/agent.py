@@ -6,11 +6,12 @@ import os
 from typing import Any
 
 import anthropic
+import requests
 
 from .auth import get_access_token
 from .tools import outlook
 
-MODEL = "claude-opus-4-5"
+MODEL = os.environ.get("NIKITAI_MODEL", "claude-sonnet-5")
 
 SYSTEM_PROMPT = """You are NikitAI, a personal assistant with access to the user's Outlook email and calendar.
 
@@ -100,23 +101,39 @@ TOOL_DEFINITIONS: list[dict] = [
 ]
 
 
-def _execute_tool(name: str, inputs: dict[str, Any], token: str) -> str:
-    try:
-        if name == "list_emails":
-            result = outlook.list_emails(token, **inputs)
-        elif name == "get_email":
-            result = outlook.get_email(token, **inputs)
-        elif name == "search_emails":
-            result = outlook.search_emails(token, **inputs)
-        elif name == "send_email":
-            result = outlook.send_email(token, **inputs)
-        elif name == "list_calendar_events":
-            result = outlook.list_calendar_events(token, **inputs)
-        else:
-            return f"Unknown tool: {name}"
-        return json.dumps(result, indent=2)
-    except Exception as exc:  # noqa: BLE001
-        return f"Tool error: {exc}"
+def _execute_tool(name: str, inputs: dict[str, Any], token: str) -> tuple[str, str | None]:
+    """Returns (result_str, refreshed_token) where refreshed_token is set if a 401 forced re-auth."""
+    refreshed: str | None = None
+    for attempt in range(2):
+        try:
+            if name == "send_email":
+                to = inputs.get("to", "")
+                subject = inputs.get("subject", "")
+                body = inputs.get("body", "")
+                print(f"\nTo:      {to}\nSubject: {subject}\nBody:\n{body}\n")
+                if input("Send this? [y/N] ").strip().lower() != "y":
+                    return "User declined to send this email.", refreshed
+                result = outlook.send_email(token, **inputs)
+            elif name == "list_emails":
+                result = outlook.list_emails(token, **inputs)
+            elif name == "get_email":
+                result = outlook.get_email(token, **inputs)
+            elif name == "search_emails":
+                result = outlook.search_emails(token, **inputs)
+            elif name == "list_calendar_events":
+                result = outlook.list_calendar_events(token, **inputs)
+            else:
+                return f"Unknown tool: {name}", refreshed
+            return json.dumps(result, indent=2), refreshed
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 401 and attempt == 0:
+                token = get_access_token()  # expired — re-acquire and retry once
+                refreshed = token
+                continue
+            return f"Tool error: {exc}", refreshed
+        except Exception as exc:  # noqa: BLE001
+            return f"Tool error: {exc}", refreshed
+    return "Tool error: re-authentication failed.", refreshed
 
 
 def run_agent() -> None:
@@ -157,7 +174,9 @@ def run_agent() -> None:
                     assistant_text += block.text
                 elif block.type == "tool_use":
                     print(f"[calling {block.name}…]")
-                    result_str = _execute_tool(block.name, block.input, token)
+                    result_str, new_token = _execute_tool(block.name, block.input, token)
+                    if new_token:
+                        token = new_token
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,

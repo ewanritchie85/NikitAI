@@ -11,7 +11,6 @@ SCOPES = [
     "Mail.Read",
     "Mail.Send",
     "Calendars.Read",
-    "offline_access",
 ]
 
 
