@@ -1,11 +1,8 @@
-def greet(name: str = "World") -> str:
-    return f"Hello, {name}!"
-
-
 def main() -> None:
-    import argparse
+    from dotenv import load_dotenv
 
-    parser = argparse.ArgumentParser(prog="nikita")
-    parser.add_argument("--name", default="World")
-    args = parser.parse_args()
-    print(greet(args.name))
+    load_dotenv()
+
+    from .agent import run_agent
+
+    run_agent()
