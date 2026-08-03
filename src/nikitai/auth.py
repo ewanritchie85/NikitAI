@@ -10,7 +10,7 @@ _TOKEN_CACHE_PATH = Path.home() / ".nikitai_token_cache.json"
 SCOPES = [
     "Mail.Read",
     "Mail.Send",
-    "Calendars.Read",
+    "Calendars.ReadWrite",
 ]
 
 

@@ -20,9 +20,16 @@ You can:
 - Search emails by keyword
 - Send emails on the user's behalf (always confirm before sending)
 - List upcoming calendar events
+- Create new calendar events
 
 Be concise and helpful. When showing emails or events, format them clearly.
-Always ask for confirmation before sending any email."""
+Always ask for confirmation before sending any email.
+
+When the user asks you to create a calendar event, you must first ask for (if not
+already provided): the event title, the date and start/end time, the timezone, and
+how many minutes before the event they'd like a reminder (default to 15 minutes if
+they have no preference). Never guess or assume these values. Once you have them,
+summarize the event back to the user and confirm before creating it."""
 
 TOOL_DEFINITIONS: list[dict] = [
     {
@@ -98,6 +105,48 @@ TOOL_DEFINITIONS: list[dict] = [
             },
         },
     },
+    {
+        "name": "create_calendar_event",
+        "description": (
+            "Create a new calendar event. Only call this after asking the user for the "
+            "title, date/time, timezone, and reminder lead time, and after they have "
+            "explicitly confirmed the event details."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "subject": {"type": "string", "description": "Event title."},
+                "start": {
+                    "type": "string",
+                    "description": "Start datetime, e.g. '2026-08-10T14:00:00'.",
+                },
+                "end": {
+                    "type": "string",
+                    "description": "End datetime, e.g. '2026-08-10T15:00:00'.",
+                },
+                "timezone_name": {
+                    "type": "string",
+                    "description": (
+                        "Timezone for start/end, e.g. 'UTC' or 'Pacific Standard Time'."
+                    ),
+                    "default": "UTC",
+                },
+                "location": {"type": "string", "description": "Optional event location."},
+                "body": {"type": "string", "description": "Optional event description/notes."},
+                "reminder_minutes_before_start": {
+                    "type": "integer",
+                    "description": "Minutes before the event to send a reminder.",
+                    "default": 15,
+                },
+                "attendees": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of attendee email addresses.",
+                },
+            },
+            "required": ["subject", "start", "end"],
+        },
+    },
 ]
 
 
@@ -114,6 +163,21 @@ def _execute_tool(name: str, inputs: dict[str, Any], token: str) -> tuple[str, s
                 if input("Send this? [y/N] ").strip().lower() != "y":
                     return "User declined to send this email.", refreshed
                 result = outlook.send_email(token, **inputs)
+            elif name == "create_calendar_event":
+                subject = inputs.get("subject", "")
+                start = inputs.get("start", "")
+                end = inputs.get("end", "")
+                tz = inputs.get("timezone_name", "UTC")
+                reminder = inputs.get("reminder_minutes_before_start", 15)
+                print(
+                    f"\nSubject:  {subject}\n"
+                    f"Start:    {start} ({tz})\n"
+                    f"End:      {end} ({tz})\n"
+                    f"Reminder: {reminder} minutes before\n"
+                )
+                if input("Create this event? [y/N] ").strip().lower() != "y":
+                    return "User declined to create this event.", refreshed
+                result = outlook.create_calendar_event(token, **inputs)
             elif name == "list_emails":
                 result = outlook.list_emails(token, **inputs)
             elif name == "get_email":

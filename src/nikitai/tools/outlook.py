@@ -108,3 +108,32 @@ def list_calendar_events(
         },
     )
     return data.get("value", [])
+
+
+def create_calendar_event(
+    token: str,
+    subject: str,
+    start: str,
+    end: str,
+    timezone_name: str = "UTC",
+    location: str | None = None,
+    body: str | None = None,
+    reminder_minutes_before_start: int = 15,
+    attendees: list[str] | None = None,
+) -> dict:
+    event: dict[str, Any] = {
+        "subject": subject,
+        "start": {"dateTime": start, "timeZone": timezone_name},
+        "end": {"dateTime": end, "timeZone": timezone_name},
+        "isReminderOn": True,
+        "reminderMinutesBeforeStart": reminder_minutes_before_start,
+    }
+    if location:
+        event["location"] = {"displayName": location}
+    if body:
+        event["body"] = {"contentType": "Text", "content": body}
+    if attendees:
+        event["attendees"] = [
+            {"emailAddress": {"address": address}, "type": "required"} for address in attendees
+        ]
+    return _post(token, "/me/events", event)
