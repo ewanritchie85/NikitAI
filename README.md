@@ -3,8 +3,8 @@
 AI-powered personal assistant using Claude API with Outlook email and calendar access.
 
 Reads and searches your inbox, summarizes your calendar, and can draft/send emails
-on your behalf — sending always requires an explicit confirmation in the terminal
-before anything goes out.
+and create calendar events on your behalf — sending an email or creating an event
+always requires an explicit confirmation in the terminal before anything happens.
 
 Quickstart
 ---------
@@ -24,7 +24,7 @@ Microsoft Graph API access requires an app registration:
 8. Go to **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**, and add:
    - `Mail.Read`
    - `Mail.Send`
-   - `Calendars.Read`
+   - `Calendars.ReadWrite`
    (no admin consent needed for personal use — you'll consent on first login)
 
 If you're using a **personal** Microsoft account (`@outlook.com`, `@hotmail.com`, etc.),
@@ -72,12 +72,26 @@ so you won't have to log in every time.
 make test
 ```
 
+Development
+-----------
+
+```bash
+make install-dev   # install runtime + dev dependencies (ruff, pytest-cov)
+make lint          # ruff check .
+make format        # ruff format . (auto-fix)
+make format-check  # ruff format --check . (CI-friendly, no changes made)
+make coverage      # pytest with coverage (term + htmlcov/ report)
+make check         # lint + format-check + test
+make ci            # install-dev + lint + format-check + coverage (what CI runs)
+```
+
 Safety notes
 ------------
-- `send_email` always prompts for an explicit `y/N` confirmation in the terminal
-  before anything is sent — this is enforced in code, not just in the system prompt.
-- The agent only has `Mail.Read`, `Mail.Send`, and `Calendars.Read` — it cannot
-  delete mail, modify calendar events, or access anything beyond your own mailbox.
+- `send_email` and `create_calendar_event` always prompt for an explicit `y/N`
+  confirmation in the terminal before anything happens — this is enforced in code,
+  not just in the system prompt.
+- The agent only has `Mail.Read`, `Mail.Send`, and `Calendars.ReadWrite` — it cannot
+  delete mail or calendar events, or access anything beyond your own mailbox.
 - Delete `~/.nikitai_token_cache.json` to force a fresh login / revoke local access.
 
 License
