@@ -85,14 +85,24 @@ function renderResponse(data) {
 }
 
 async function resolvePending(pendingId, approved, container) {
+  container.querySelectorAll("button").forEach((btn) => { btn.disabled = true; });
   container.remove();
-  const res = await fetch("/confirm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pending_id: pendingId, approved: approved }),
-  });
-  const data = await res.json();
-  renderResponse(data);
+
+  try {
+    const res = await fetch("/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pending_id: pendingId, approved: approved }),
+    });
+    if (!res.ok) {
+      appendMessage("Something went wrong (" + res.status + "). Check the server logs.", "error");
+      return;
+    }
+    const data = await res.json();
+    renderResponse(data);
+  } catch (err) {
+    appendMessage("Something went wrong (" + err + "). Check the server logs.", "error");
+  }
 }
 
 async function sendMessage() {
@@ -110,8 +120,14 @@ async function sendMessage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: text }),
     });
+    if (!res.ok) {
+      appendMessage("Something went wrong (" + res.status + "). Check the server logs.", "error");
+      return;
+    }
     const data = await res.json();
     renderResponse(data);
+  } catch (err) {
+    appendMessage("Something went wrong (" + err + "). Check the server logs.", "error");
   } finally {
     inputEl.disabled = false;
     sendButton.disabled = false;

@@ -320,13 +320,16 @@ class Agent:
 
     def _run_loop(self) -> AgentResponse:
         while True:
-            response = self.client.messages.create(
-                model=MODEL,
-                max_tokens=4096,
-                system=SYSTEM_PROMPT,
-                tools=TOOL_DEFINITIONS,
-                messages=self.messages,
-            )
+            try:
+                response = self.client.messages.create(
+                    model=MODEL,
+                    max_tokens=4096,
+                    system=SYSTEM_PROMPT,
+                    tools=TOOL_DEFINITIONS,
+                    messages=self.messages,
+                )
+            except anthropic.APIError as exc:
+                return AgentResponse(error=str(exc))
 
             tool_use_blocks = [block for block in response.content if block.type == "tool_use"]
             outcome = self._process_blocks(tool_use_blocks, response.content, [])
