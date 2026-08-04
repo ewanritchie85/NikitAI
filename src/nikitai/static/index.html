@@ -3,148 +3,28 @@
 <head>
 <meta charset="utf-8">
 <title>NikitAI</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-  h1 { font-size: 1.25rem; }
-  #messages { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
-  .msg { padding: 0.5rem 0.75rem; border-radius: 6px; white-space: pre-wrap; }
-  .msg.user { background: #dbeafe; align-self: flex-end; }
-  .msg.assistant { background: #f1f5f9; align-self: flex-start; }
-  .msg.error { background: #fee2e2; align-self: flex-start; }
-  .pending { border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.5rem 0.75rem; background: #fffbeb; }
-  .pending pre { white-space: pre-wrap; font-size: 0.85rem; background: #fff; padding: 0.5rem; border-radius: 4px; }
-  .pending-buttons { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
-  #input-row { display: flex; gap: 0.5rem; }
-  #text-input { flex: 1; padding: 0.5rem; font-size: 1rem; }
-  button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
-</style>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<h1>NikitAI</h1>
-<div id="messages"></div>
-<div id="input-row">
-  <input id="text-input" type="text" placeholder="Type a message..." autofocus>
-  <button id="send-button">Send</button>
+<div class="app">
+  <header class="app-header">
+    <h1>NikitAI</h1>
+    <p>Powered by Dreamies</p>
+  </header>
+  <div id="messages"></div>
+  <div id="input-row">
+    <input id="text-input" type="text" placeholder="Type a message..." autofocus>
+    <button id="send-button">Send</button>
+  </div>
 </div>
 
-<script>
-const messagesEl = document.getElementById("messages");
-const inputEl = document.getElementById("text-input");
-const sendButton = document.getElementById("send-button");
-
-function appendMessage(text, cssClass) {
-  const div = document.createElement("div");
-  div.className = "msg " + cssClass;
-  if (cssClass === "assistant") {
-    div.innerHTML = DOMPurify.sanitize(marked.parse(text));
-  } else {
-    div.textContent = text;
-  }
-  messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-  return div;
-}
-
-function appendPending(pending) {
-  const container = document.createElement("div");
-  container.className = "pending";
-
-  const title = document.createElement("div");
-  title.textContent = "Confirm action: " + pending.tool_name;
-  container.appendChild(title);
-
-  const pre = document.createElement("pre");
-  pre.textContent = JSON.stringify(pending.tool_input, null, 2);
-  container.appendChild(pre);
-
-  const buttons = document.createElement("div");
-  buttons.className = "pending-buttons";
-
-  const approveBtn = document.createElement("button");
-  approveBtn.textContent = "Approve";
-  approveBtn.onclick = () => resolvePending(pending.id, true, container);
-
-  const denyBtn = document.createElement("button");
-  denyBtn.textContent = "Deny";
-  denyBtn.onclick = () => resolvePending(pending.id, false, container);
-
-  buttons.appendChild(approveBtn);
-  buttons.appendChild(denyBtn);
-  container.appendChild(buttons);
-
-  messagesEl.appendChild(container);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function renderResponse(data) {
-  if (data.text) {
-    appendMessage(data.text, "assistant");
-  }
-  if (data.error) {
-    appendMessage(data.error, "error");
-  }
-  if (data.pending) {
-    appendPending(data.pending);
-  }
-}
-
-async function resolvePending(pendingId, approved, container) {
-  container.querySelectorAll("button").forEach((btn) => { btn.disabled = true; });
-  container.remove();
-
-  try {
-    const res = await fetch("/confirm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pending_id: pendingId, approved: approved }),
-    });
-    if (!res.ok) {
-      appendMessage("Something went wrong (" + res.status + "). Check the server logs.", "error");
-      return;
-    }
-    const data = await res.json();
-    renderResponse(data);
-  } catch (err) {
-    appendMessage("Something went wrong (" + err + "). Check the server logs.", "error");
-  }
-}
-
-async function sendMessage() {
-  const text = inputEl.value.trim();
-  if (!text) return;
-
-  appendMessage(text, "user");
-  inputEl.value = "";
-  inputEl.disabled = true;
-  sendButton.disabled = true;
-
-  try {
-    const res = await fetch("/message", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text }),
-    });
-    if (!res.ok) {
-      appendMessage("Something went wrong (" + res.status + "). Check the server logs.", "error");
-      return;
-    }
-    const data = await res.json();
-    renderResponse(data);
-  } catch (err) {
-    appendMessage("Something went wrong (" + err + "). Check the server logs.", "error");
-  } finally {
-    inputEl.disabled = false;
-    sendButton.disabled = false;
-    inputEl.focus();
-  }
-}
-
-sendButton.addEventListener("click", sendMessage);
-inputEl.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") sendMessage();
-});
-</script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<script src="/static/script.js"></script>
 </body>
 </html>
+
+

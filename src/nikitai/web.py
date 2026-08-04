@@ -11,6 +11,7 @@ from typing import Any
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .agent import Agent, AgentResponse
@@ -20,6 +21,7 @@ load_dotenv()
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="NikitAI")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _agent: Agent | None = None
 

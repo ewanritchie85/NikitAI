@@ -1,0 +1,282 @@
+:root {
+  --page-bg: #0a0b09;
+  --app-bg: #121410;
+  --border: rgba(255, 157, 0, 0.3);
+  --text: #ff9d00;
+  --text-muted: #b57b2e;
+  --user-bg: rgba(61, 220, 132, 0.1);
+  --user-text: #3ddc84;
+  --user-border: rgba(61, 220, 132, 0.35);
+  --assistant-bg: rgba(255, 157, 0, 0.05);
+  --assistant-border: rgba(255, 157, 0, 0.25);
+  --error-bg: rgba(255, 59, 48, 0.08);
+  --error-border: rgba(255, 59, 48, 0.5);
+  --error-text: #ff6b5e;
+  --pending-bg: rgba(255, 95, 31, 0.06);
+  --pending-accent: #ff5f1f;
+  --primary: #ff9d00;
+  --approve: #3ddc84;
+  --deny-text: #ff6b5e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  background: var(--page-bg);
+  color: var(--text);
+  margin: 0;
+  padding: 2.5rem 1rem;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+}
+
+.app {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 0 24px rgba(255, 157, 0, 0.06);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 5rem);
+  min-height: 420px;
+  overflow: hidden;
+}
+
+.app::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 157, 0, 0.025) 0px,
+    rgba(255, 157, 0, 0.025) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+}
+
+.app-header {
+  padding-bottom: 1.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  font-size: 1.375rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.app-header h1::before {
+  content: "> ";
+}
+
+.app-header p {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+#messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+  padding-right: 0.25rem;
+}
+
+.msg {
+  max-width: 85%;
+  padding: 0.7rem 1rem;
+  border-radius: 2px;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  font-size: 0.95rem;
+  border: 1px solid transparent;
+}
+
+.msg.user {
+  background: var(--user-bg);
+  color: var(--user-text);
+  border-color: var(--user-border);
+  align-self: flex-end;
+}
+
+.msg.assistant {
+  background: var(--assistant-bg);
+  color: var(--text);
+  border-color: var(--assistant-border);
+  align-self: flex-start;
+}
+
+.msg.assistant p:first-child { margin-top: 0; }
+.msg.assistant p:last-child { margin-bottom: 0; }
+
+.msg.error {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error-text);
+  align-self: flex-start;
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0.85rem 1.1rem;
+}
+
+.typing-indicator span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.pending {
+  border: 1px solid var(--pending-accent);
+  border-left: 4px solid var(--pending-accent);
+  border-radius: 2px;
+  padding: 0.85rem 1rem;
+  background: var(--pending-bg);
+  align-self: stretch;
+}
+
+.pending-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  color: var(--pending-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pending pre {
+  white-space: pre-wrap;
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.6rem 0.7rem;
+  border-radius: 2px;
+  margin: 0;
+}
+
+.pending-buttons {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.btn {
+  padding: 0.5rem 1.1rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.btn::before { content: "[ "; }
+.btn::after { content: " ]"; }
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn-approve {
+  color: var(--approve);
+  border: 1px solid var(--approve);
+}
+
+.btn-approve:not(:disabled):hover {
+  background: var(--approve);
+  color: var(--app-bg);
+}
+
+.btn-deny {
+  color: var(--deny-text);
+  border: 1px solid var(--deny-text);
+}
+
+.btn-deny:not(:disabled):hover {
+  background: var(--deny-text);
+  color: var(--app-bg);
+}
+
+#input-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+#text-input {
+  flex: 1;
+  padding: 0.7rem 1rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#text-input::placeholder {
+  color: var(--text-muted);
+}
+
+#text-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(255, 157, 0, 0.15);
+}
+
+#send-button {
+  padding: 0.7rem 1.4rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--primary);
+  background: transparent;
+  border: 1px solid var(--primary);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+#send-button:not(:disabled):hover {
+  background: var(--primary);
+  color: var(--app-bg);
+}
+
+#send-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
