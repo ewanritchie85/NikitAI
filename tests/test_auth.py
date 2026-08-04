@@ -1,4 +1,5 @@
 """Unit tests for nikitai.auth."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -22,6 +23,7 @@ def azure_client_id(monkeypatch):
 
 
 # ── _load_cache / _save_cache ───────────────────────────────────────────────
+
 
 def test_load_cache_returns_empty_cache_when_file_missing(token_cache_path):
     assert not token_cache_path.exists()
@@ -60,6 +62,7 @@ def test_save_cache_does_not_write_when_state_unchanged(token_cache_path):
 
 
 # ── get_access_token ─────────────────────────────────────────────────────────
+
 
 def test_get_access_token_missing_client_id_raises(monkeypatch):
     monkeypatch.delenv("AZURE_CLIENT_ID", raising=False)
@@ -137,9 +140,7 @@ def test_get_access_token_raises_when_device_flow_auth_fails(mock_app_cls):
         "user_code": "ABC123",
         "message": "Go to https://microsoft.com/devicelogin and enter code ABC123",
     }
-    mock_app.acquire_token_by_device_flow.return_value = {
-        "error_description": "user declined"
-    }
+    mock_app.acquire_token_by_device_flow.return_value = {"error_description": "user declined"}
     mock_app_cls.return_value = mock_app
 
     with pytest.raises(RuntimeError, match="user declined"):

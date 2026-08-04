@@ -1,4 +1,5 @@
 """Unit tests for nikitai.tools.outlook."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -19,6 +20,7 @@ def _mock_response(json_data):
 
 
 # ── _get / _post ────────────────────────────────────────────────────────────
+
 
 @patch("nikitai.tools.outlook.requests.get")
 def test_get_builds_url_and_headers(mock_get):
@@ -61,6 +63,7 @@ def test_post_builds_url_headers_and_body(mock_post):
 
 
 # ── Email ────────────────────────────────────────────────────────────────────
+
 
 @patch("nikitai.tools.outlook._get")
 def test_list_emails_default_folder_and_limit(mock_get):
@@ -150,6 +153,7 @@ def test_send_email_builds_expected_body(mock_post):
 
 
 # ── Calendar ─────────────────────────────────────────────────────────────────
+
 
 @patch("nikitai.tools.outlook._get")
 @patch("nikitai.tools.outlook.datetime")
@@ -278,9 +282,7 @@ def test_create_calendar_event_includes_optional_fields(mock_post):
 def test_create_calendar_event_omits_optional_fields_when_not_provided(mock_post):
     mock_post.return_value = {"id": "evt3"}
 
-    outlook.create_calendar_event(
-        TOKEN, "Quick call", "2026-08-10T14:00:00", "2026-08-10T15:00:00"
-    )
+    outlook.create_calendar_event(TOKEN, "Quick call", "2026-08-10T14:00:00", "2026-08-10T15:00:00")
 
     _, _, body = mock_post.call_args[0]
     assert "location" not in body

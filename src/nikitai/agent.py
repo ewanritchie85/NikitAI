@@ -1,4 +1,5 @@
 """Claude-powered personal assistant agent with Outlook tool use."""
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,8 @@ from .tools import outlook
 
 MODEL = os.environ.get("NIKITAI_MODEL", "claude-sonnet-5")
 
-SYSTEM_PROMPT = """You are NikitAI, a personal assistant with access to the user's Outlook email and calendar.
+SYSTEM_PROMPT = """You are NikitAI, a personal assistant with access to the user's Outlook \
+email and calendar.
 
 You can:
 - List and read emails
@@ -95,7 +97,9 @@ TOOL_DEFINITIONS: list[dict] = [
             "properties": {
                 "start": {
                     "type": "string",
-                    "description": "ISO 8601 start datetime, e.g. '2026-08-03T00:00:00Z'. Defaults to now.",
+                    "description": (
+                        "ISO 8601 start datetime, e.g. '2026-08-03T00:00:00Z'. Defaults to now."
+                    ),
                 },
                 "end": {
                     "type": "string",
@@ -151,7 +155,10 @@ TOOL_DEFINITIONS: list[dict] = [
 
 
 def _execute_tool(name: str, inputs: dict[str, Any], token: str) -> tuple[str, str | None]:
-    """Returns (result_str, refreshed_token) where refreshed_token is set if a 401 forced re-auth."""
+    """Returns (result_str, refreshed_token).
+
+    refreshed_token is set if a 401 forced re-auth.
+    """
     refreshed: str | None = None
     for attempt in range(2):
         try:
@@ -241,11 +248,13 @@ def run_agent() -> None:
                     result_str, new_token = _execute_tool(block.name, block.input, token)
                     if new_token:
                         token = new_token
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result_str,
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result_str,
+                        }
+                    )
 
             if assistant_text:
                 print(f"\nNikitAI: {assistant_text}\n")

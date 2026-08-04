@@ -1,4 +1,5 @@
 """Microsoft Graph API wrappers for Outlook email and calendar."""
+
 from __future__ import annotations
 
 import calendar
@@ -33,6 +34,7 @@ def _post(token: str, path: str, body: dict) -> Any:
 
 
 # ── Email ──────────────────────────────────────────────────────────────────────
+
 
 def list_emails(token: str, folder: str = "inbox", limit: int = 10) -> list[dict]:
     data = _get(
@@ -79,6 +81,7 @@ def send_email(token: str, to: str, subject: str, body: str) -> dict:
 
 
 # ── Calendar ───────────────────────────────────────────────────────────────────
+
 
 def list_calendar_events(
     token: str,

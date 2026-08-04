@@ -17,6 +17,10 @@ ENV/
 .pytest_cache/
 .mypy_cache/
 .cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 
 # Editor
 .vscode/

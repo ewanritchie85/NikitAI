@@ -1,4 +1,5 @@
 """Microsoft Graph authentication via MSAL device-code flow."""
+
 import json
 import os
 from pathlib import Path

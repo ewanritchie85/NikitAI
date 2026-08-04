@@ -1,4 +1,5 @@
 """Unit tests for nikitai.agent."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -18,6 +19,7 @@ def _http_error(status_code: int) -> requests.HTTPError:
 
 
 # ── _execute_tool: happy paths ───────────────────────────────────────────────
+
 
 @patch("nikitai.agent.outlook.list_emails")
 def test_execute_tool_list_emails(mock_list_emails):
@@ -70,6 +72,7 @@ def test_execute_tool_unknown_tool_returns_message():
 
 # ── send_email confirmation flow ─────────────────────────────────────────────
 
+
 @patch("nikitai.agent.outlook.send_email")
 @patch("builtins.input", return_value="y")
 def test_execute_tool_send_email_confirmed(mock_input, mock_send_email):
@@ -96,6 +99,7 @@ def test_execute_tool_send_email_declined(mock_input, mock_send_email):
 
 
 # ── create_calendar_event confirmation flow ─────────────────────────────────
+
 
 @patch("nikitai.agent.outlook.create_calendar_event")
 @patch("builtins.input", return_value="y")
@@ -131,6 +135,7 @@ def test_execute_tool_create_calendar_event_declined(mock_input, mock_create_eve
 
 
 # ── error handling ───────────────────────────────────────────────────────────
+
 
 @patch("nikitai.agent.get_access_token")
 @patch("nikitai.agent.outlook.list_emails")
@@ -181,6 +186,7 @@ def test_execute_tool_generic_exception_returns_error_message(mock_list_emails):
 
 
 # ── run_agent ────────────────────────────────────────────────────────────────
+
 
 def test_run_agent_raises_without_api_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
