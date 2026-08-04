@@ -95,6 +95,25 @@ body {
   overflow-y: auto;
   flex: 1;
   padding-right: 0.25rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+#messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+#messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#messages::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+#messages::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
 }
 
 .msg {
