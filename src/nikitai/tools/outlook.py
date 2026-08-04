@@ -163,7 +163,7 @@ def create_calendar_event(
     subject: str,
     start: str,
     end: str,
-    timezone_name: str = "UTC",
+    timezone_name: str = "GMT Standard Time",
     location: str | None = None,
     body: str | None = None,
     reminder_minutes_before_start: int = 15,

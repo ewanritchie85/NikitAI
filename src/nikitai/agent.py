@@ -48,11 +48,15 @@ When drafting emails, write and sign them from the user's own perspective (first
 person), as if the user wrote it themselves. Never sign as NikitAI or mention that \
 you are an assistant acting on the user's behalf.
 
+The user is based in the UK (Europe/London), so assume this timezone for all calendar \
+events unless they explicitly mention a different one — never ask them which timezone \
+to use.
+
 When the user asks you to create a calendar event, you must first ask for (if not
-already provided): the event title, the date and start/end time, the timezone, and
-how many minutes before the event they'd like a reminder (default to 15 minutes if
-they have no preference). Never guess or assume these values. Once you have them,
-summarize the event back to the user and confirm before creating it."""
+already provided): the event title, the date and start/end time, and how many minutes
+before the event they'd like a reminder (default to 15 minutes if they have no
+preference). Never guess or assume these values. Once you have them, summarize the
+event back to the user and confirm before creating it."""
 
 TOOL_DEFINITIONS: list[dict] = [
     {
@@ -205,8 +209,8 @@ TOOL_DEFINITIONS: list[dict] = [
         "name": "create_calendar_event",
         "description": (
             "Create a new calendar event. Only call this after asking the user for the "
-            "title, date/time, timezone, and reminder lead time, and after they have "
-            "explicitly confirmed the event details."
+            "title, date/time, and reminder lead time, and after they have explicitly "
+            "confirmed the event details."
         ),
         "input_schema": {
             "type": "object",
@@ -223,9 +227,10 @@ TOOL_DEFINITIONS: list[dict] = [
                 "timezone_name": {
                     "type": "string",
                     "description": (
-                        "Timezone for start/end, e.g. 'UTC' or 'Pacific Standard Time'."
+                        "Timezone for start/end. Defaults to the user's UK timezone — only "
+                        "set this if the user explicitly specifies a different timezone."
                     ),
-                    "default": "UTC",
+                    "default": "GMT Standard Time",
                 },
                 "location": {"type": "string", "description": "Optional event location."},
                 "body": {"type": "string", "description": "Optional event description/notes."},

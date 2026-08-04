@@ -317,8 +317,8 @@ def test_create_calendar_event_minimal_required_fields(mock_post):
         "/me/events",
         {
             "subject": "Team sync",
-            "start": {"dateTime": "2026-08-10T14:00:00", "timeZone": "UTC"},
-            "end": {"dateTime": "2026-08-10T15:00:00", "timeZone": "UTC"},
+            "start": {"dateTime": "2026-08-10T14:00:00", "timeZone": "GMT Standard Time"},
+            "end": {"dateTime": "2026-08-10T15:00:00", "timeZone": "GMT Standard Time"},
             "isReminderOn": True,
             "reminderMinutesBeforeStart": 15,
         },

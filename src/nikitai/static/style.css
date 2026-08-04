@@ -4,9 +4,9 @@
   --border: rgba(255, 157, 0, 0.3);
   --text: #ff9d00;
   --text-muted: #b57b2e;
-  --user-bg: rgba(61, 220, 132, 0.1);
-  --user-text: #3ddc84;
-  --user-border: rgba(61, 220, 132, 0.35);
+  --user-bg: rgba(255, 157, 0, 0.1);
+  --user-text: #ff9d00;
+  --user-border: rgba(255, 157, 0, 0.35);
   --assistant-bg: rgba(255, 157, 0, 0.05);
   --assistant-border: rgba(255, 157, 0, 0.25);
   --error-bg: rgba(255, 59, 48, 0.08);
@@ -15,6 +15,7 @@
   --pending-bg: rgba(255, 95, 31, 0.06);
   --pending-accent: #ff5f1f;
   --primary: #ff9d00;
+  --link-color: #ffd27a;
   --approve: #3ddc84;
   --deny-text: #ff6b5e;
 }
@@ -122,6 +123,16 @@ body {
 
 .msg.assistant p:first-child { margin-top: 0; }
 .msg.assistant p:last-child { margin-bottom: 0; }
+
+.msg.assistant a {
+  color: var(--link-color);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 210, 122, 0.5);
+}
+
+.msg.assistant a:hover {
+  color: #fff;
+}
 
 .msg.error {
   background: var(--error-bg);
