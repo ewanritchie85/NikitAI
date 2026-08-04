@@ -8,10 +8,10 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import anthropic
 import requests
+from zoneinfo import ZoneInfo
 
 from .auth import get_access_token
 from .tools import outlook
@@ -19,7 +19,11 @@ from .tools import outlook
 MODEL = os.environ.get("NIKITAI_MODEL", "claude-sonnet-5")
 
 # Tools that must not run until the caller (CLI, web backend, etc.) confirms them.
-CONFIRMATION_REQUIRED_TOOLS: set[str] = {"send_email", "delete_mail_folder", "create_calendar_event"}
+CONFIRMATION_REQUIRED_TOOLS: set[str] = {
+    "send_email",
+    "delete_mail_folder",
+    "create_calendar_event",
+}
 
 UK_TIMEZONE = ZoneInfo("Europe/London")
 

@@ -109,9 +109,7 @@ def move_email(token: str, message_id: str, destination_folder_id: str) -> dict:
     )
 
 
-def create_mail_folder(
-    token: str, display_name: str, parent_folder_id: str | None = None
-) -> dict:
+def create_mail_folder(token: str, display_name: str, parent_folder_id: str | None = None) -> dict:
     path = (
         f"/me/mailFolders/{parent_folder_id}/childFolders"
         if parent_folder_id
