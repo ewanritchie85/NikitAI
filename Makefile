@@ -1,4 +1,4 @@
-.PHONY: install install-dev test coverage lint format format-check check ci build
+.PHONY: install install-dev test coverage lint format format-check check ci build web
 install:
 	pip install -r requirements.txt
 	pip install -e .
@@ -27,3 +27,6 @@ ci: install-dev lint format-check coverage
 
 build:
 	python -m build
+
+web:
+	uvicorn nikitai.web:app --reload

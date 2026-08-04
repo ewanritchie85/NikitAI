@@ -72,6 +72,21 @@ so you won't have to log in every time.
 make test
 ```
 
+### 7. (Optional) Run the web UI
+
+A minimal local web chat interface is also available as an alternative to the
+terminal:
+
+```bash
+make web
+```
+
+(equivalent to `uvicorn nikitai.web:app --reload`)
+
+Then open http://127.0.0.1:8000 in a browser. It's a single-user, single-session
+tool with no auth — don't expose it beyond localhost. Sending an email still
+requires an explicit Approve/Deny click before anything happens.
+
 Development
 -----------
 

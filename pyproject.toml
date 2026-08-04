@@ -23,6 +23,9 @@ src = ["src"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]
+
 [tool.coverage.run]
 source = ["src/nikitai"]
 

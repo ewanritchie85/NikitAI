@@ -18,6 +18,21 @@ def _http_error(status_code: int) -> requests.HTTPError:
     return requests.HTTPError(response=response)
 
 
+def _text_block(text: str) -> MagicMock:
+    return MagicMock(type="text", text=text)
+
+
+def _tool_use_block(name: str, tool_id: str, tool_input: dict) -> MagicMock:
+    # MagicMock(name=...) sets the mock's repr name, not a `.name` attribute — set it after.
+    block = MagicMock(type="tool_use", id=tool_id, input=tool_input)
+    block.name = name
+    return block
+
+
+def _response(content: list, stop_reason: str) -> MagicMock:
+    return MagicMock(content=content, stop_reason=stop_reason)
+
+
 # ── _execute_tool: happy paths ───────────────────────────────────────────────
 
 
@@ -86,19 +101,8 @@ def test_execute_tool_list_calendar_events(mock_list_events):
     assert refreshed is None
 
 
-def test_execute_tool_unknown_tool_returns_message():
-    result, refreshed = agent._execute_tool("delete_everything", {}, TOKEN)
-
-    assert result == "Unknown tool: delete_everything"
-    assert refreshed is None
-
-
-# ── send_email confirmation flow ─────────────────────────────────────────────
-
-
 @patch("nikitai.agent.outlook.send_email")
-@patch("builtins.input", return_value="y")
-def test_execute_tool_send_email_confirmed(mock_input, mock_send_email):
+def test_execute_tool_send_email(mock_send_email):
     mock_send_email.return_value = {"status": "sent"}
     inputs = {"to": "a@b.com", "subject": "Hi", "body": "Hello"}
 
@@ -109,24 +113,8 @@ def test_execute_tool_send_email_confirmed(mock_input, mock_send_email):
     assert refreshed is None
 
 
-@patch("nikitai.agent.outlook.send_email")
-@patch("builtins.input", return_value="n")
-def test_execute_tool_send_email_declined(mock_input, mock_send_email):
-    inputs = {"to": "a@b.com", "subject": "Hi", "body": "Hello"}
-
-    result, refreshed = agent._execute_tool("send_email", inputs, TOKEN)
-
-    mock_send_email.assert_not_called()
-    assert result == "User declined to send this email."
-    assert refreshed is None
-
-
-# ── create_calendar_event confirmation flow ─────────────────────────────────
-
-
 @patch("nikitai.agent.outlook.create_calendar_event")
-@patch("builtins.input", return_value="y")
-def test_execute_tool_create_calendar_event_confirmed(mock_input, mock_create_event):
+def test_execute_tool_create_calendar_event(mock_create_event):
     mock_create_event.return_value = {"id": "evt1"}
     inputs = {
         "subject": "Team sync",
@@ -141,19 +129,10 @@ def test_execute_tool_create_calendar_event_confirmed(mock_input, mock_create_ev
     assert refreshed is None
 
 
-@patch("nikitai.agent.outlook.create_calendar_event")
-@patch("builtins.input", return_value="n")
-def test_execute_tool_create_calendar_event_declined(mock_input, mock_create_event):
-    inputs = {
-        "subject": "Team sync",
-        "start": "2026-08-10T14:00:00",
-        "end": "2026-08-10T15:00:00",
-    }
+def test_execute_tool_unknown_tool_returns_message():
+    result, refreshed = agent._execute_tool("delete_everything", {}, TOKEN)
 
-    result, refreshed = agent._execute_tool("create_calendar_event", inputs, TOKEN)
-
-    mock_create_event.assert_not_called()
-    assert result == "User declined to create this event."
+    assert result == "Unknown tool: delete_everything"
     assert refreshed is None
 
 
@@ -208,30 +187,151 @@ def test_execute_tool_generic_exception_returns_error_message(mock_list_emails):
     assert refreshed is None
 
 
-# ── run_agent ────────────────────────────────────────────────────────────────
+# ── Agent ────────────────────────────────────────────────────────────────────
 
 
-def test_run_agent_raises_without_api_key(monkeypatch):
+def test_agent_init_raises_without_api_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY is not set"):
-        agent.run_agent()
+        agent.Agent()
 
 
 @patch("nikitai.agent.get_access_token", return_value=TOKEN)
 @patch("nikitai.agent.anthropic.Anthropic")
-@patch("builtins.input", side_effect=["hello", "quit"])
-def test_run_agent_exits_on_quit_without_calling_model(
-    mock_input, mock_anthropic_cls, mock_get_token, monkeypatch
-):
+def test_agent_init_sets_up_client_and_token(mock_anthropic_cls, mock_get_token, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    instance = agent.Agent()
+
+    assert instance.token == TOKEN
+    assert instance.messages == []
+    mock_anthropic_cls.assert_called_once_with(api_key="test-key")
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_send_returns_text_reply(mock_anthropic_cls, mock_get_token, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     mock_client = MagicMock()
-    response = MagicMock()
-    response.content = [MagicMock(type="text", text="Hi there!")]
-    response.stop_reason = "end_turn"
-    mock_client.messages.create.return_value = response
+    mock_client.messages.create.return_value = _response([_text_block("Hi there!")], "end_turn")
     mock_anthropic_cls.return_value = mock_client
 
-    agent.run_agent()
+    instance = agent.Agent()
+    result = instance.send("hello")
 
+    assert result.text == "Hi there!"
+    assert result.pending is None
+    assert result.error is None
+    assert instance.messages[0] == {"role": "user", "content": "hello"}
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+@patch("nikitai.agent.outlook.list_emails")
+def test_agent_send_executes_non_confirmation_tool_and_continues(
+    mock_list_emails, mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    mock_list_emails.return_value = [{"id": "1"}]
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = [
+        _response([_tool_use_block("list_emails", "tool_1", {})], "tool_use"),
+        _response([_text_block("Here are your emails.")], "end_turn"),
+    ]
+    mock_anthropic_cls.return_value = mock_client
+
+    instance = agent.Agent()
+    result = instance.send("show my emails")
+
+    mock_list_emails.assert_called_once_with(TOKEN)
+    assert result.text == "Here are your emails."
+    assert result.pending is None
+    assert mock_client.messages.create.call_count == 2
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_send_pauses_for_confirmation_required_tool(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    tool_input = {"to": "a@b.com", "subject": "Hi", "body": "Hello"}
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _response(
+        [_tool_use_block("send_email", "tool_1", tool_input)], "tool_use"
+    )
+    mock_anthropic_cls.return_value = mock_client
+
+    instance = agent.Agent()
+    result = instance.send("email bob")
+
+    assert result.pending is not None
+    assert result.pending.tool_name == "send_email"
+    assert result.pending.tool_input == tool_input
+    assert result.pending.id in instance._pending
     mock_client.messages.create.assert_called_once()
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+@patch("nikitai.agent.outlook.send_email")
+def test_agent_confirm_approved_executes_tool_and_continues(
+    mock_send_email, mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    mock_send_email.return_value = {"status": "sent"}
+    tool_input = {"to": "a@b.com", "subject": "Hi", "body": "Hello"}
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = [
+        _response([_tool_use_block("send_email", "tool_1", tool_input)], "tool_use"),
+        _response([_text_block("Sent it!")], "end_turn"),
+    ]
+    mock_anthropic_cls.return_value = mock_client
+
+    instance = agent.Agent()
+    pending = instance.send("email bob").pending
+    result = instance.confirm(pending.id, approved=True)
+
+    mock_send_email.assert_called_once_with(TOKEN, **tool_input)
+    assert result.text == "Sent it!"
+    assert pending.id not in instance._pending
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+@patch("nikitai.agent.outlook.send_email")
+def test_agent_confirm_declined_skips_tool_and_continues(
+    mock_send_email, mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    tool_input = {"to": "a@b.com", "subject": "Hi", "body": "Hello"}
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = [
+        _response([_tool_use_block("send_email", "tool_1", tool_input)], "tool_use"),
+        _response([_text_block("Okay, not sending.")], "end_turn"),
+    ]
+    mock_anthropic_cls.return_value = mock_client
+
+    instance = agent.Agent()
+    pending = instance.send("email bob").pending
+    result = instance.confirm(pending.id, approved=False)
+
+    mock_send_email.assert_not_called()
+    assert result.text == "Okay, not sending."
+    tool_result_message = instance.messages[-2]
+    assert tool_result_message["content"][0]["content"] == "User declined to run this action."
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_confirm_unknown_id_returns_error(mock_anthropic_cls, mock_get_token, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    mock_anthropic_cls.return_value = MagicMock()
+
+    instance = agent.Agent()
+    result = instance.confirm("bogus-id", approved=True)
+
+    assert result.error == "Unknown confirmation id: 'bogus-id'"
+    assert result.text is None
+    assert result.pending is None

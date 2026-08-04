@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
+from dataclasses import dataclass
 from typing import Any
 
 import anthropic
@@ -13,6 +15,9 @@ from .auth import get_access_token
 from .tools import outlook
 
 MODEL = os.environ.get("NIKITAI_MODEL", "claude-sonnet-5")
+
+# Tools that must not run until the caller (CLI, web backend, etc.) confirms them.
+CONFIRMATION_REQUIRED_TOOLS: set[str] = {"send_email"}
 
 SYSTEM_PROMPT = """You are NikitAI, a personal assistant with access to the user's Outlook \
 email and calendar.
@@ -205,27 +210,8 @@ def _execute_tool(name: str, inputs: dict[str, Any], token: str) -> tuple[str, s
     for attempt in range(2):
         try:
             if name == "send_email":
-                to = inputs.get("to", "")
-                subject = inputs.get("subject", "")
-                body = inputs.get("body", "")
-                print(f"\nTo:      {to}\nSubject: {subject}\nBody:\n{body}\n")
-                if input("Send this? [y/N] ").strip().lower() != "y":
-                    return "User declined to send this email.", refreshed
                 result = outlook.send_email(token, **inputs)
             elif name == "create_calendar_event":
-                subject = inputs.get("subject", "")
-                start = inputs.get("start", "")
-                end = inputs.get("end", "")
-                tz = inputs.get("timezone_name", "UTC")
-                reminder = inputs.get("reminder_minutes_before_start", 15)
-                print(
-                    f"\nSubject:  {subject}\n"
-                    f"Start:    {start} ({tz})\n"
-                    f"End:      {end} ({tz})\n"
-                    f"Reminder: {reminder} minutes before\n"
-                )
-                if input("Create this event? [y/N] ").strip().lower() != "y":
-                    return "User declined to create this event.", refreshed
                 result = outlook.create_calendar_event(token, **inputs)
             elif name == "list_emails":
                 result = outlook.list_emails(token, **inputs)
@@ -253,63 +239,137 @@ def _execute_tool(name: str, inputs: dict[str, Any], token: str) -> tuple[str, s
     return "Tool error: re-authentication failed.", refreshed
 
 
-def run_agent() -> None:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set.")
+@dataclass
+class PendingConfirmation:
+    """A tool call awaiting external approval before `Agent.confirm()` runs it."""
 
-    client = anthropic.Anthropic(api_key=api_key)
-    token = get_access_token()
+    id: str
+    tool_name: str
+    tool_input: dict[str, Any]
 
-    print("NikitAI is ready. Type 'quit' to exit.\n")
-    messages: list[dict] = []
 
-    while True:
-        user_input = input("You: ").strip()
-        if user_input.lower() in {"quit", "exit", "q"}:
-            break
-        if not user_input:
-            continue
+@dataclass
+class AgentResponse:
+    """Result of `Agent.send()`/`Agent.confirm()`.
 
-        messages.append({"role": "user", "content": user_input})
+    `text` may accompany `pending` (narration before the tool call); `error` is
+    mutually exclusive with the other two.
+    """
 
+    text: str | None = None
+    pending: PendingConfirmation | None = None
+    error: str | None = None
+
+
+@dataclass
+class _PendingToolUse:
+    """Internal state needed to resume a paused conversation turn after confirmation."""
+
+    assistant_content: list[Any]
+    tool_use_id: str
+    tool_name: str
+    tool_input: dict[str, Any]
+    completed_results: list[dict[str, str]]
+    remaining_blocks: list[Any]
+
+
+class Agent:
+    """Drives a Claude conversation with Outlook tool use, independent of any UI.
+
+    Callers interact only through `send()` and `confirm()`; neither blocks on
+    terminal input, so this class can be driven by a CLI, a web backend, etc.
+    """
+
+    def __init__(self) -> None:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is not set.")
+        self.client = anthropic.Anthropic(api_key=api_key)
+        self.token = get_access_token()
+        self.messages: list[dict] = []
+        self._pending: dict[str, _PendingToolUse] = {}
+
+    def send(self, user_text: str) -> AgentResponse:
+        self.messages.append({"role": "user", "content": user_text})
+        return self._run_loop()
+
+    def confirm(self, pending_id: str, approved: bool) -> AgentResponse:
+        pending = self._pending.pop(pending_id, None)
+        if pending is None:
+            return AgentResponse(error=f"Unknown confirmation id: {pending_id!r}")
+
+        if approved:
+            result_str, new_token = _execute_tool(pending.tool_name, pending.tool_input, self.token)
+            if new_token:
+                self.token = new_token
+        else:
+            result_str = "User declined to run this action."
+
+        results = [
+            *pending.completed_results,
+            {"type": "tool_result", "tool_use_id": pending.tool_use_id, "content": result_str},
+        ]
+
+        outcome = self._process_blocks(pending.remaining_blocks, pending.assistant_content, results)
+        if isinstance(outcome, PendingConfirmation):
+            return AgentResponse(pending=outcome)
+
+        self.messages.append({"role": "assistant", "content": pending.assistant_content})
+        self.messages.append({"role": "user", "content": outcome})
+        return self._run_loop()
+
+    def _run_loop(self) -> AgentResponse:
         while True:
-            response = client.messages.create(
+            response = self.client.messages.create(
                 model=MODEL,
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
                 tools=TOOL_DEFINITIONS,
-                messages=messages,
+                messages=self.messages,
             )
 
-            # Collect any text to display and any tool calls to execute
-            tool_results = []
-            assistant_text = ""
+            tool_use_blocks = [block for block in response.content if block.type == "tool_use"]
+            outcome = self._process_blocks(tool_use_blocks, response.content, [])
 
-            for block in response.content:
-                if block.type == "text":
-                    assistant_text += block.text
-                elif block.type == "tool_use":
-                    print(f"[calling {block.name}…]")
-                    result_str, new_token = _execute_tool(block.name, block.input, token)
-                    if new_token:
-                        token = new_token
-                    tool_results.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result_str,
-                        }
-                    )
+            assistant_text = "".join(
+                block.text for block in response.content if block.type == "text"
+            )
 
-            if assistant_text:
-                print(f"\nNikitAI: {assistant_text}\n")
+            if isinstance(outcome, PendingConfirmation):
+                return AgentResponse(text=assistant_text or None, pending=outcome)
 
-            # Append assistant turn
-            messages.append({"role": "assistant", "content": response.content})
+            self.messages.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason == "tool_use":
-                messages.append({"role": "user", "content": tool_results})
-                # Loop back to let Claude process tool results
-            else:
-                break  # end_turn — conversation step complete
+                self.messages.append({"role": "user", "content": outcome})
+                continue  # loop back to let Claude process tool results
+
+            return AgentResponse(text=assistant_text)
+
+    def _process_blocks(
+        self,
+        blocks: list[Any],
+        assistant_content: list[Any],
+        results: list[dict[str, str]],
+    ) -> list[dict[str, str]] | PendingConfirmation:
+        """Executes tool_use blocks in order, pausing at the first one needing confirmation."""
+        for index, block in enumerate(blocks):
+            if block.name in CONFIRMATION_REQUIRED_TOOLS:
+                pending_id = uuid.uuid4().hex
+                self._pending[pending_id] = _PendingToolUse(
+                    assistant_content=assistant_content,
+                    tool_use_id=block.id,
+                    tool_name=block.name,
+                    tool_input=block.input,
+                    completed_results=results,
+                    remaining_blocks=blocks[index + 1 :],
+                )
+                return PendingConfirmation(
+                    id=pending_id, tool_name=block.name, tool_input=block.input
+                )
+
+            result_str, new_token = _execute_tool(block.name, block.input, self.token)
+            if new_token:
+                self.token = new_token
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_str})
+        return results
