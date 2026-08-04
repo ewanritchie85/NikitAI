@@ -21,6 +21,8 @@ You can:
 - List and read emails
 - Search emails by keyword
 - Send emails on the user's behalf (always confirm before sending)
+- List the user's mail folders, including custom folders
+- Move emails to a different mail folder
 - List upcoming calendar events
 - Create new calendar events
 
@@ -91,6 +93,42 @@ TOOL_DEFINITIONS: list[dict] = [
                 "body": {"type": "string"},
             },
             "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "list_mail_folders",
+        "description": (
+            "List the user's mail folders (including custom folders), with their IDs. "
+            "Use this to find the destination folder ID before moving an email."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Max folders to return.",
+                    "default": 50,
+                },
+            },
+        },
+    },
+    {
+        "name": "move_email",
+        "description": (
+            "Move an email to a different mail folder. The destination folder can be a "
+            "well-known name (e.g. 'inbox', 'archive', 'deleteditems') or a folder ID "
+            "from list_mail_folders."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message_id": {"type": "string", "description": "The email message ID."},
+                "destination_folder_id": {
+                    "type": "string",
+                    "description": "Target folder ID or well-known folder name.",
+                },
+            },
+            "required": ["message_id", "destination_folder_id"],
         },
     },
     {
@@ -195,6 +233,10 @@ def _execute_tool(name: str, inputs: dict[str, Any], token: str) -> tuple[str, s
                 result = outlook.get_email(token, **inputs)
             elif name == "search_emails":
                 result = outlook.search_emails(token, **inputs)
+            elif name == "list_mail_folders":
+                result = outlook.list_mail_folders(token, **inputs)
+            elif name == "move_email":
+                result = outlook.move_email(token, **inputs)
             elif name == "list_calendar_events":
                 result = outlook.list_calendar_events(token, **inputs)
             else:

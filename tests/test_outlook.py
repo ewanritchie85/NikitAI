@@ -152,6 +152,51 @@ def test_send_email_builds_expected_body(mock_post):
     assert result == {"status": "sent"}
 
 
+@patch("nikitai.tools.outlook._get")
+def test_list_mail_folders_default_limit(mock_get):
+    mock_get.return_value = {"value": [{"id": "f1", "displayName": "Projects"}]}
+
+    result = outlook.list_mail_folders(TOKEN)
+
+    mock_get.assert_called_once_with(
+        TOKEN,
+        "/me/mailFolders",
+        params={
+            "$top": 50,
+            "$select": "id,displayName,parentFolderId,childFolderCount",
+        },
+    )
+    assert result == [{"id": "f1", "displayName": "Projects"}]
+
+
+@patch("nikitai.tools.outlook._get")
+def test_list_mail_folders_custom_limit(mock_get):
+    mock_get.return_value = {"value": []}
+
+    result = outlook.list_mail_folders(TOKEN, limit=100)
+
+    _, kwargs = mock_get.call_args
+    assert kwargs["params"]["$top"] == 100
+    assert result == []
+
+
+@patch("nikitai.tools.outlook._get")
+def test_list_mail_folders_missing_value_key_returns_empty_list(mock_get):
+    mock_get.return_value = {}
+
+    assert outlook.list_mail_folders(TOKEN) == []
+
+
+@patch("nikitai.tools.outlook._post")
+def test_move_email_builds_expected_body(mock_post):
+    mock_post.return_value = {"id": "msg1", "parentFolderId": "f1"}
+
+    result = outlook.move_email(TOKEN, "msg1", "f1")
+
+    mock_post.assert_called_once_with(TOKEN, "/me/messages/msg1/move", {"destinationId": "f1"})
+    assert result == {"id": "msg1", "parentFolderId": "f1"}
+
+
 # ── Calendar ─────────────────────────────────────────────────────────────────
 
 

@@ -80,6 +80,26 @@ def send_email(token: str, to: str, subject: str, body: str) -> dict:
     )
 
 
+def list_mail_folders(token: str, limit: int = 50) -> list[dict]:
+    data = _get(
+        token,
+        "/me/mailFolders",
+        params={
+            "$top": limit,
+            "$select": "id,displayName,parentFolderId,childFolderCount",
+        },
+    )
+    return data.get("value", [])
+
+
+def move_email(token: str, message_id: str, destination_folder_id: str) -> dict:
+    return _post(
+        token,
+        f"/me/messages/{message_id}/move",
+        {"destinationId": destination_folder_id},
+    )
+
+
 # ── Calendar ───────────────────────────────────────────────────────────────────
 
 

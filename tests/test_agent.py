@@ -53,6 +53,29 @@ def test_execute_tool_search_emails(mock_search_emails):
     assert refreshed is None
 
 
+@patch("nikitai.agent.outlook.list_mail_folders")
+def test_execute_tool_list_mail_folders(mock_list_folders):
+    mock_list_folders.return_value = [{"id": "f1", "displayName": "Projects"}]
+
+    result, refreshed = agent._execute_tool("list_mail_folders", {}, TOKEN)
+
+    mock_list_folders.assert_called_once_with(TOKEN)
+    assert "Projects" in result
+    assert refreshed is None
+
+
+@patch("nikitai.agent.outlook.move_email")
+def test_execute_tool_move_email(mock_move_email):
+    mock_move_email.return_value = {"id": "msg1", "parentFolderId": "f1"}
+    inputs = {"message_id": "msg1", "destination_folder_id": "f1"}
+
+    result, refreshed = agent._execute_tool("move_email", inputs, TOKEN)
+
+    mock_move_email.assert_called_once_with(TOKEN, **inputs)
+    assert "msg1" in result
+    assert refreshed is None
+
+
 @patch("nikitai.agent.outlook.list_calendar_events")
 def test_execute_tool_list_calendar_events(mock_list_events):
     mock_list_events.return_value = [{"id": "evt1"}]

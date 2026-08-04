@@ -9,7 +9,7 @@ import msal
 _TOKEN_CACHE_PATH = Path.home() / ".nikitai_token_cache.json"
 
 SCOPES = [
-    "Mail.Read",
+    "Mail.ReadWrite",
     "Mail.Send",
     "Calendars.ReadWrite",
 ]
