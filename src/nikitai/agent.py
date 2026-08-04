@@ -6,7 +6,9 @@ import json
 import os
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import anthropic
 import requests
@@ -17,9 +19,15 @@ from .tools import outlook
 MODEL = os.environ.get("NIKITAI_MODEL", "claude-sonnet-5")
 
 # Tools that must not run until the caller (CLI, web backend, etc.) confirms them.
-CONFIRMATION_REQUIRED_TOOLS: set[str] = {"send_email"}
+CONFIRMATION_REQUIRED_TOOLS: set[str] = {"send_email", "delete_mail_folder", "create_calendar_event"}
 
-SYSTEM_PROMPT = """You are NikitAI, a personal assistant with access to the user's Outlook \
+UK_TIMEZONE = ZoneInfo("Europe/London")
+
+SYSTEM_PROMPT_TEMPLATE = """The current date and time is {now}. Use this to resolve relative \
+dates like 'today', 'tomorrow', or 'this Saturday' — do not ask the user to confirm the date \
+unless their phrasing is still ambiguous after applying this.
+
+You are NikitAI, a personal assistant with access to the user's Outlook \
 email and calendar.
 
 You can:
@@ -28,6 +36,8 @@ You can:
 - Send emails on the user's behalf (always confirm before sending)
 - List the user's mail folders, including custom folders
 - Move emails to a different mail folder
+- Create new mail folders
+- Delete mail folders (always confirm before deleting, since it's irreversible)
 - List upcoming calendar events
 - Create new calendar events
 
@@ -137,6 +147,41 @@ TOOL_DEFINITIONS: list[dict] = [
         },
     },
     {
+        "name": "create_mail_folder",
+        "description": (
+            "Create a new mail folder. Optionally nest it inside an existing folder by "
+            "providing its parent folder ID from list_mail_folders."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "display_name": {"type": "string", "description": "Name for the new folder."},
+                "parent_folder_id": {
+                    "type": "string",
+                    "description": "Optional parent folder ID to nest the new folder under.",
+                },
+            },
+            "required": ["display_name"],
+        },
+    },
+    {
+        "name": "delete_mail_folder",
+        "description": (
+            "Delete a mail folder and everything in it. Only call this after the user has "
+            "explicitly confirmed, since this is irreversible."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "folder_id": {
+                    "type": "string",
+                    "description": "ID of the folder to delete, from list_mail_folders.",
+                },
+            },
+            "required": ["folder_id"],
+        },
+    },
+    {
         "name": "list_calendar_events",
         "description": "List upcoming calendar events within an optional date range.",
         "input_schema": {
@@ -223,6 +268,10 @@ def _execute_tool(name: str, inputs: dict[str, Any], token: str) -> tuple[str, s
                 result = outlook.list_mail_folders(token, **inputs)
             elif name == "move_email":
                 result = outlook.move_email(token, **inputs)
+            elif name == "create_mail_folder":
+                result = outlook.create_mail_folder(token, **inputs)
+            elif name == "delete_mail_folder":
+                result = outlook.delete_mail_folder(token, **inputs)
             elif name == "list_calendar_events":
                 result = outlook.list_calendar_events(token, **inputs)
             else:
@@ -288,6 +337,9 @@ class Agent:
         self.token = get_access_token()
         self.messages: list[dict] = []
         self._pending: dict[str, _PendingToolUse] = {}
+        now = datetime.now(UK_TIMEZONE)
+        formatted_now = f"{now.strftime('%A, %-d %B %Y, %H:%M')} {now.tzname()}"
+        self.system_prompt = SYSTEM_PROMPT_TEMPLATE.format(now=formatted_now)
 
     def send(self, user_text: str) -> AgentResponse:
         self.messages.append({"role": "user", "content": user_text})
@@ -324,7 +376,7 @@ class Agent:
                 response = self.client.messages.create(
                     model=MODEL,
                     max_tokens=4096,
-                    system=SYSTEM_PROMPT,
+                    system=self.system_prompt,
                     tools=TOOL_DEFINITIONS,
                     messages=self.messages,
                 )

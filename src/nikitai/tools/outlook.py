@@ -33,6 +33,15 @@ def _post(token: str, path: str, body: dict) -> Any:
     return resp.json()
 
 
+def _delete(token: str, path: str) -> None:
+    resp = requests.delete(
+        f"{GRAPH_BASE}{path}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+
+
 # ── Email ──────────────────────────────────────────────────────────────────────
 
 
@@ -98,6 +107,22 @@ def move_email(token: str, message_id: str, destination_folder_id: str) -> dict:
         f"/me/messages/{message_id}/move",
         {"destinationId": destination_folder_id},
     )
+
+
+def create_mail_folder(
+    token: str, display_name: str, parent_folder_id: str | None = None
+) -> dict:
+    path = (
+        f"/me/mailFolders/{parent_folder_id}/childFolders"
+        if parent_folder_id
+        else "/me/mailFolders"
+    )
+    return _post(token, path, {"displayName": display_name})
+
+
+def delete_mail_folder(token: str, folder_id: str) -> dict:
+    _delete(token, f"/me/mailFolders/{folder_id}")
+    return {"status": "deleted", "folder_id": folder_id}
 
 
 # ── Calendar ───────────────────────────────────────────────────────────────────

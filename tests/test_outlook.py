@@ -197,6 +197,36 @@ def test_move_email_builds_expected_body(mock_post):
     assert result == {"id": "msg1", "parentFolderId": "f1"}
 
 
+@patch("nikitai.tools.outlook._post")
+def test_create_mail_folder_top_level(mock_post):
+    mock_post.return_value = {"id": "f2", "displayName": "Projects"}
+
+    result = outlook.create_mail_folder(TOKEN, "Projects")
+
+    mock_post.assert_called_once_with(TOKEN, "/me/mailFolders", {"displayName": "Projects"})
+    assert result == {"id": "f2", "displayName": "Projects"}
+
+
+@patch("nikitai.tools.outlook._post")
+def test_create_mail_folder_nested_under_parent(mock_post):
+    mock_post.return_value = {"id": "f3", "displayName": "2026"}
+
+    result = outlook.create_mail_folder(TOKEN, "2026", parent_folder_id="f2")
+
+    mock_post.assert_called_once_with(
+        TOKEN, "/me/mailFolders/f2/childFolders", {"displayName": "2026"}
+    )
+    assert result == {"id": "f3", "displayName": "2026"}
+
+
+@patch("nikitai.tools.outlook._delete")
+def test_delete_mail_folder_calls_correct_endpoint(mock_delete):
+    result = outlook.delete_mail_folder(TOKEN, "f2")
+
+    mock_delete.assert_called_once_with(TOKEN, "/me/mailFolders/f2")
+    assert result == {"status": "deleted", "folder_id": "f2"}
+
+
 # ── Calendar ─────────────────────────────────────────────────────────────────
 
 
