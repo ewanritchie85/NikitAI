@@ -121,8 +121,23 @@ body {
   align-self: flex-start;
 }
 
-.msg.assistant p:first-child { margin-top: 0; }
-.msg.assistant p:last-child { margin-bottom: 0; }
+.msg.assistant * {
+  margin: 0;
+  padding: 0;
+}
+
+.msg.assistant > p + p {
+  margin-top: 0.5em;
+}
+
+.msg.assistant ul,
+.msg.assistant ol {
+  padding-left: 1.4em;
+}
+
+.msg.assistant li + li {
+  margin-top: 0.2em;
+}
 
 .msg.assistant a {
   color: var(--link-color);
