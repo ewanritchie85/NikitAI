@@ -1,19 +1,16 @@
 # Secrets & local config
 .env
 *.egg-info/
-~/.nikita_token_cache.json
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.egg-info/
 dist/
 build/
 .venv/
 venv/
 ENV/
-.env
 .pytest_cache/
 .mypy_cache/
 .cache/
@@ -26,3 +23,6 @@ htmlcov/
 .vscode/
 .idea/
 .DS_Store
+
+# Personal notes
+todolist.md
