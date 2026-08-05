@@ -2,9 +2,9 @@
 
 AI-powered personal assistant using Claude API with Outlook email and calendar access.
 
-Reads and searches your inbox, summarizes your calendar, and can draft/send emails
-and create calendar events on your behalf — sending an email or creating an event
-always requires an explicit confirmation in the terminal before anything happens.
+Reads and searches your inbox, summarizes your calendar, and can draft/send emails,
+create calendar events, and manage mail folders (list, create, delete) on your
+behalf. Sensitive actions always require explicit approval before anything happens.
 
 Quickstart
 ---------
@@ -84,8 +84,9 @@ make web
 (equivalent to `uvicorn nikitai.web:app --reload`)
 
 Then open http://127.0.0.1:8000 in a browser. It's a single-user, single-session
-tool with no auth — don't expose it beyond localhost. Sending an email still
-requires an explicit Approve/Deny click before anything happens.
+tool with no auth — don't expose it beyond localhost. Approval-required actions
+(sending email, deleting a mail folder, creating a calendar event) are still gated
+behind explicit Approve/Deny prompts.
 
 Development
 -----------
@@ -102,11 +103,15 @@ make ci            # install-dev + lint + format-check + coverage (what CI runs)
 
 Safety notes
 ------------
-- `send_email` and `create_calendar_event` always prompt for an explicit `y/N`
-  confirmation in the terminal before anything happens — this is enforced in code,
-  not just in the system prompt.
-- The agent only has `Mail.Read`, `Mail.Send`, and `Calendars.ReadWrite` — it cannot
-  delete mail or calendar events, or access anything beyond your own mailbox.
+- `send_email`, `delete_mail_folder`, and `create_calendar_event` always require
+  explicit approval before execution. In CLI this appears as `y/N`; in web UI it
+  appears as Approve/Deny.
+- The agent uses Microsoft Graph delegated permissions (`Mail.Read`, `Mail.Send`,
+  `Calendars.ReadWrite`) and operates only within the signed-in user's mailbox and
+  calendar context.
+- Calendar behavior defaults to UK timezone handling (`Europe/London` in prompt
+  guidance, `GMT Standard Time` for Graph event creation) unless the user explicitly
+  specifies a different timezone.
 - Delete `~/.nikitai_token_cache.json` to force a fresh login / revoke local access.
 
 License
