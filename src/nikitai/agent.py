@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from .auth import get_access_token
 from .tools import outlook
 
-MODEL = os.environ.get("NIKITAI_MODEL", "claude-haiku-4.5")
+MODEL = os.environ.get("NIKITAI_MODEL", "claude-haiku-4-5")
 
 # Tools that must not run until the caller (CLI, web backend, etc.) confirms them.
 CONFIRMATION_REQUIRED_TOOLS: set[str] = {
