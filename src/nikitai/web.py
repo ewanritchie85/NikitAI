@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .agent import Agent, AgentResponse
+from .agent import Agent, AgentResponse, outlook_agent_config
 
 load_dotenv()
 
@@ -31,7 +31,7 @@ def get_agent() -> Agent:
     global _agent
     if _agent is None:
         try:
-            _agent = Agent()
+            _agent = Agent(**outlook_agent_config())
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
     return _agent

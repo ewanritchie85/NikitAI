@@ -108,5 +108,12 @@ def test_get_agent_lazily_creates_and_caches_agent(monkeypatch):
     first = web.get_agent()
     second = web.get_agent()
 
-    mock_agent_cls.assert_called_once_with()
+    mock_agent_cls.assert_called_once()
+    kwargs = mock_agent_cls.call_args.kwargs
+    assert set(kwargs) == {
+        "system_prompt",
+        "tool_definitions",
+        "tool_dispatcher",
+        "confirmation_required_tools",
+    }
     assert first is second

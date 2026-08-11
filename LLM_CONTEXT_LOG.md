@@ -2,7 +2,7 @@
 
 Purpose: single-file, high-signal project state for IDE LLMs and humans.
 
-Last updated: 2026-08-09
+Last updated: 2026-08-11
 Owner: project maintainers + any active coding agent
 
 ## 1. Current Snapshot
@@ -40,7 +40,10 @@ Core capabilities currently in repo:
 - Tests: tests/
 
 Design notes:
-- Agent interaction is stateful via an Agent class.
+- Agent interaction is stateful via an Agent class. The Agent is domain-agnostic:
+  it is parameterized by system_prompt, tool_definitions, tool_dispatcher, and
+  confirmation_required_tools. The Outlook wiring lives in agent.outlook_agent_config();
+  cli.py/web.py construct via Agent(**outlook_agent_config()).
 - Approval-required operations return pending confirmation state instead of auto-executing.
 - Web app is local-first, single-session style, with explicit approve/deny flow.
 
@@ -110,6 +113,14 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-11 - Make Agent domain-agnostic (reusable for future sub-agents)
+- Scope: src/nikitai/agent.py, src/nikitai/cli.py, src/nikitai/web.py, tests/test_agent.py, tests/test_web.py
+- Summary: `Agent.__init__` now takes `system_prompt`, `tool_definitions`, `tool_dispatcher`, and `confirmation_required_tools`, stored as instance attrs (`self.system_prompt`, `self.tools`, `self.tool_dispatcher`, `self.confirmation_required_tools`). `_run_loop`/`_process_blocks`/`confirm` reference those attrs instead of module-level `TOOL_DEFINITIONS`/`CONFIRMATION_REQUIRED_TOOLS`/`_execute_tool`. Added `build_system_prompt(template, tz)` helper (Europe/London datetime logic, reusable by any domain) and `outlook_agent_config()` factory bundling the Outlook prompt/tools/dispatcher/gates. `cli.py` and `web.py` now build via `Agent(**outlook_agent_config())`.
+- Why: prepare a single reusable Agent for planned sub-agents (Outlook, home infra logs, Garmin) without an orchestrator yet.
+- Impact: pure refactor — no behavior change. `_execute_tool` and Outlook constants remain in agent.py; the Agent class body has no Outlook-specific references.
+- Validation: `pytest -q` → 72 passed; `ruff check .` clean; `ruff format --check .` clean. (Note: repo `.venv` was stale/broken from an old `Nikita` path; ran suite in a fresh venv.)
+- Follow-ups: repo `.venv` needs recreating; orchestrator/routing and additional sub-agents intentionally not added in this change.
 
 ### 2026-08-09 - Initial Context Baseline
 - Scope: project-wide context document

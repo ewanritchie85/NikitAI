@@ -1,10 +1,17 @@
-"""Claude-powered personal assistant agent with Outlook tool use."""
+"""Claude-powered, domain-agnostic assistant agent driven by injected tool config.
+
+The :class:`Agent` is parameterized by a system prompt, tool definitions, a tool
+dispatcher, and the set of confirmation-gated tools. This module also ships the
+Outlook sub-agent configuration (prompt, tools, dispatcher) that currently backs
+the CLI and web UIs; construct it via :func:`outlook_agent_config`.
+"""
 
 from __future__ import annotations
 
 import json
 import os
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -17,6 +24,14 @@ from .auth import get_access_token
 from .tools import outlook
 
 MODEL = os.environ.get("NIKITAI_MODEL", "claude-haiku-4-5")
+
+# Signature of a tool dispatcher: (tool_name, inputs, token) -> (result_str, refreshed_token).
+ToolDispatcher = Callable[[str, dict[str, Any], str], "tuple[str, str | None]"]
+
+# ── Outlook domain configuration ─────────────────────────────────────────────
+# The constants below describe the Outlook sub-agent specifically. The Agent
+# class itself is domain-agnostic and receives these via its constructor, so
+# future sub-agents (home infra logs, Garmin, etc.) can supply their own.
 
 # Tools that must not run until the caller (CLI, web backend, etc.) confirms them.
 CONFIRMATION_REQUIRED_TOOLS: set[str] = {
@@ -297,6 +312,31 @@ def _execute_tool(name: str, inputs: dict[str, Any], token: str) -> tuple[str, s
     return "Tool error: re-authentication failed.", refreshed
 
 
+def build_system_prompt(template: str, tz: ZoneInfo = UK_TIMEZONE) -> str:
+    """Fill a system-prompt template's ``{now}`` with the current localized datetime.
+
+    Domain-agnostic: any sub-agent whose prompt wants a current-time anchor can
+    reuse this instead of duplicating the Europe/London formatting logic.
+    """
+    now = datetime.now(tz)
+    formatted_now = f"{now.strftime('%A, %-d %B %Y, %H:%M')} {now.tzname()}"
+    return template.format(now=formatted_now)
+
+
+def outlook_agent_config() -> dict[str, Any]:
+    """Bundle the Outlook sub-agent's system prompt, tools, dispatcher, and gates.
+
+    Callers (CLI, web) spread this into ``Agent(**outlook_agent_config())`` so the
+    Agent class stays free of any Outlook-specific imports or constants.
+    """
+    return {
+        "system_prompt": build_system_prompt(SYSTEM_PROMPT_TEMPLATE),
+        "tool_definitions": TOOL_DEFINITIONS,
+        "tool_dispatcher": _execute_tool,
+        "confirmation_required_tools": CONFIRMATION_REQUIRED_TOOLS,
+    }
+
+
 @dataclass
 class PendingConfirmation:
     """A tool call awaiting external approval before `Agent.confirm()` runs it."""
@@ -332,13 +372,23 @@ class _PendingToolUse:
 
 
 class Agent:
-    """Drives a Claude conversation with Outlook tool use, independent of any UI.
+    """Drives a Claude conversation with tool use, independent of any UI or domain.
+
+    The agent is parameterized by a system prompt, tool definitions, a tool
+    dispatcher, and the set of tools that require confirmation, so the same class
+    can back multiple sub-agents (Outlook, home infra logs, Garmin, etc.).
 
     Callers interact only through `send()` and `confirm()`; neither blocks on
     terminal input, so this class can be driven by a CLI, a web backend, etc.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        system_prompt: str,
+        tool_definitions: list[dict],
+        tool_dispatcher: ToolDispatcher,
+        confirmation_required_tools: set[str],
+    ) -> None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY is not set.")
@@ -346,9 +396,10 @@ class Agent:
         self.token = get_access_token()
         self.messages: list[dict] = []
         self._pending: dict[str, _PendingToolUse] = {}
-        now = datetime.now(UK_TIMEZONE)
-        formatted_now = f"{now.strftime('%A, %-d %B %Y, %H:%M')} {now.tzname()}"
-        self.system_prompt = SYSTEM_PROMPT_TEMPLATE.format(now=formatted_now)
+        self.system_prompt = system_prompt
+        self.tools = tool_definitions
+        self.tool_dispatcher = tool_dispatcher
+        self.confirmation_required_tools = confirmation_required_tools
 
     def send(self, user_text: str) -> AgentResponse:
         self.messages.append({"role": "user", "content": user_text})
@@ -360,7 +411,9 @@ class Agent:
             return AgentResponse(error=f"Unknown confirmation id: {pending_id!r}")
 
         if approved:
-            result_str, new_token = _execute_tool(pending.tool_name, pending.tool_input, self.token)
+            result_str, new_token = self.tool_dispatcher(
+                pending.tool_name, pending.tool_input, self.token
+            )
             if new_token:
                 self.token = new_token
         else:
@@ -386,7 +439,7 @@ class Agent:
                     model=MODEL,
                     max_tokens=4096,
                     system=self.system_prompt,
-                    tools=TOOL_DEFINITIONS,
+                    tools=self.tools,
                     messages=self.messages,
                 )
             except anthropic.APIError as exc:
@@ -418,7 +471,7 @@ class Agent:
     ) -> list[dict[str, str]] | PendingConfirmation:
         """Executes tool_use blocks in order, pausing at the first one needing confirmation."""
         for index, block in enumerate(blocks):
-            if block.name in CONFIRMATION_REQUIRED_TOOLS:
+            if block.name in self.confirmation_required_tools:
                 pending_id = uuid.uuid4().hex
                 self._pending[pending_id] = _PendingToolUse(
                     assistant_content=assistant_content,
@@ -432,7 +485,7 @@ class Agent:
                     id=pending_id, tool_name=block.name, tool_input=block.input
                 )
 
-            result_str, new_token = _execute_tool(block.name, block.input, self.token)
+            result_str, new_token = self.tool_dispatcher(block.name, block.input, self.token)
             if new_token:
                 self.token = new_token
             results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_str})

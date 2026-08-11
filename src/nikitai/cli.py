@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .agent import Agent, PendingConfirmation
+from .agent import Agent, PendingConfirmation, outlook_agent_config
 
 
 def main() -> None:
@@ -24,7 +24,7 @@ def _confirm(pending: PendingConfirmation) -> bool:
 
 
 def run_agent() -> None:
-    agent = Agent()
+    agent = Agent(**outlook_agent_config())
 
     print("NikitAI is ready. Type 'quit' to exit.\n")
 

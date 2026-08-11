@@ -12,6 +12,11 @@ from nikitai import agent
 TOKEN = "fake-token"
 
 
+def _agent() -> agent.Agent:
+    """Construct an Agent wired with the real Outlook config, as the app does."""
+    return agent.Agent(**agent.outlook_agent_config())
+
+
 def _http_error(status_code: int) -> requests.HTTPError:
     response = MagicMock()
     response.status_code = status_code
@@ -218,7 +223,7 @@ def test_agent_init_raises_without_api_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY is not set"):
-        agent.Agent()
+        _agent()
 
 
 @patch("nikitai.agent.get_access_token", return_value=TOKEN)
@@ -226,7 +231,7 @@ def test_agent_init_raises_without_api_key(monkeypatch):
 def test_agent_init_sets_up_client_and_token(mock_anthropic_cls, mock_get_token, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-    instance = agent.Agent()
+    instance = _agent()
 
     assert instance.token == TOKEN
     assert instance.messages == []
@@ -241,7 +246,7 @@ def test_agent_send_returns_text_reply(mock_anthropic_cls, mock_get_token, monke
     mock_client.messages.create.return_value = _response([_text_block("Hi there!")], "end_turn")
     mock_anthropic_cls.return_value = mock_client
 
-    instance = agent.Agent()
+    instance = _agent()
     result = instance.send("hello")
 
     assert result.text == "Hi there!"
@@ -265,7 +270,7 @@ def test_agent_send_executes_non_confirmation_tool_and_continues(
     ]
     mock_anthropic_cls.return_value = mock_client
 
-    instance = agent.Agent()
+    instance = _agent()
     result = instance.send("show my emails")
 
     mock_list_emails.assert_called_once_with(TOKEN)
@@ -287,7 +292,7 @@ def test_agent_send_pauses_for_confirmation_required_tool(
     )
     mock_anthropic_cls.return_value = mock_client
 
-    instance = agent.Agent()
+    instance = _agent()
     result = instance.send("email bob")
 
     assert result.pending is not None
@@ -313,7 +318,7 @@ def test_agent_confirm_approved_executes_tool_and_continues(
     ]
     mock_anthropic_cls.return_value = mock_client
 
-    instance = agent.Agent()
+    instance = _agent()
     pending = instance.send("email bob").pending
     result = instance.confirm(pending.id, approved=True)
 
@@ -337,7 +342,7 @@ def test_agent_confirm_declined_skips_tool_and_continues(
     ]
     mock_anthropic_cls.return_value = mock_client
 
-    instance = agent.Agent()
+    instance = _agent()
     pending = instance.send("email bob").pending
     result = instance.confirm(pending.id, approved=False)
 
@@ -353,7 +358,7 @@ def test_agent_confirm_unknown_id_returns_error(mock_anthropic_cls, mock_get_tok
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     mock_anthropic_cls.return_value = MagicMock()
 
-    instance = agent.Agent()
+    instance = _agent()
     result = instance.confirm("bogus-id", approved=True)
 
     assert result.error == "Unknown confirmation id: 'bogus-id'"
