@@ -33,24 +33,73 @@ Core capabilities currently in repo:
 - Entrypoints:
   - CLI runtime: src/nikitai/cli.py and src/nikitai/__main__.py
   - Web runtime: src/nikitai/web.py
-- Agent orchestration: src/nikitai/agent.py
+- Orchestrator (routing layer): src/nikitai/orchestrator.py
+- Agent (domain-agnostic worker): src/nikitai/agent.py — ONLY Agent, PendingConfirmation,
+  AgentResponse, build_system_prompt(), resolve_model() (+ DEFAULT_MODEL, UK_TIMEZONE,
+  ToolDispatcher). No Outlook/Platform Nerd content, and no routing/classification logic.
+- Sub-agent configs: src/nikitai/subagents/ (package)
+  - subagents/organiser.py: Outlook prompt/tools/_execute_tool/outlook_agent_config()
+  - subagents/platform_nerd.py: Platform Nerd prompt/tools/_execute_platform_nerd_tool/
+    platform_nerd_agent_config()
 - Auth/token handling: src/nikitai/auth.py
 - Outlook/Graph tools: src/nikitai/tools/outlook.py
+- Home-infra notes tools: src/nikitai/tools/logs.py (Platform Nerd's read/append tools)
 - Static web assets: src/nikitai/static/
-- Tests: tests/
+- Tests: tests/ (test_agent = core; test_organiser / test_platform_nerd = sub-agent configs)
 
 Design notes:
-- Agent interaction is stateful via an Agent class. The Agent is domain-agnostic:
-  it is parameterized by system_prompt, tool_definitions, tool_dispatcher, and
-  confirmation_required_tools. The Outlook wiring lives in agent.outlook_agent_config();
-  cli.py/web.py construct via Agent(**outlook_agent_config()).
+- Two-layer design: a top-level "NikitAI" Orchestrator routes each message to a
+  domain sub-agent, each backed by the generalized Agent class.
+- Orchestrator (src/nikitai/orchestrator.py):
+  - SubAgentSpec(key, display_name, description, config_factory) describes a
+    registered sub-agent; SUB_AGENT_REGISTRY maps key -> spec.
+  - Registry holds "organiser" -> subagents.organiser.outlook_agent_config()
+    (NikitAI Organiser) and "platform_nerd" ->
+    subagents.platform_nerd.platform_nerd_agent_config() (NikitAI Platform Nerd: home
+    network / self-hosting / Raspberry Pi / general networking, backed by
+    tools/logs.py). Each factory has exactly ONE canonical import path — its own
+    subagents module; orchestrator imports them only to populate the registry and
+    does NOT re-export them. resolve_router_model() / DEFAULT_ROUTER_MODEL live in
+    orchestrator.py (routing is an orchestrator concern, not core Agent infra).
+    "trainer" (Garmin) is still registered-but-unimplemented:
+    it exists ONLY as a clearly-marked commented placeholder in orchestrator.py,
+    with no config factory yet — do not add it to the live registry until built.
+  - send(): a cheap classification call (resolve_router_model():
+    NIKITAI_ROUTER_MODEL → NIKITAI_DEFAULT_MODEL → "claude-haiku-4-5") picks a
+    registered key or "unclear". A known key is dispatched to that sub-agent's
+    Agent.send(); "unclear"/unknown returns a clarifying question naming only
+    active sub-agents (never a default fallthrough).
+  - confirm(): routed to the originating sub-agent via a pending_id -> key map
+    (populated whenever send()/confirm() returns a pending), never re-classified.
+  - One Agent per sub-agent is lazily constructed on first use (same lazy pattern
+    web.get_agent() used before).
+- Agent is domain-agnostic: parameterized by system_prompt, tool_definitions,
+  tool_dispatcher, confirmation_required_tools, and model. Outlook wiring lives in
+  subagents/organiser.py (outlook_agent_config, dispatcher _execute_tool); Platform
+  Nerd wiring in subagents/platform_nerd.py (platform_nerd_agent_config, dispatcher
+  _execute_platform_nerd_tool -> tools/logs.py; gated tool set {"append_to_log"},
+  read tools ungated). Sub-agent configs import build_system_prompt/resolve_model
+  from agent.py.
+- Platform Nerd notes access (src/nikitai/tools/logs.py): list_log_files /
+  read_log_file / append_to_log operate on .txt files inside NIKITAI_HOME_INFRA_NOTES_DIR
+  (env, no default — raises if unset). All paths are resolved and confirmed inside that
+  dir (rejects ../, absolute paths, and symlinks escaping the dir). append_to_log is
+  pure-append only: never creates/truncates/overwrites, requires an existing .txt file.
+- Model selection is per sub-agent via agent.resolve_model(specific_env_var):
+  specific override → NIKITAI_DEFAULT_MODEL → agent.DEFAULT_MODEL ("claude-sonnet-5").
+  organiser uses NIKITAI_ORGANISER_MODEL; platform_nerd uses NIKITAI_PLATFORM_NERD_MODEL;
+  a future trainer would use NIKITAI_TRAINER_MODEL. The legacy NIKITAI_MODEL var is no
+  longer read anywhere.
+- cli.py and web.py now construct a single lazy Orchestrator (not a single Agent).
+  web.get_agent() returns the Orchestrator; route handler shapes are unchanged.
 - Approval-required operations return pending confirmation state instead of auto-executing.
 - Web app is local-first, single-session style, with explicit approve/deny flow.
 
 ## 4. Safety + Auth Boundaries
 
-- Approval gates are expected for high-impact actions (for example sending mail, deleting folders, creating events).
+- Approval gates are expected for high-impact actions (for example sending mail, deleting folders, creating events, appending to infra notes).
 - Graph delegated permissions include mail/calendar scopes; local token cache is used.
+- Platform Nerd file access is confined to NIKITAI_HOME_INFRA_NOTES_DIR: path traversal / absolute / symlink-escape rejected; append is pure-append to existing .txt files only (no create/overwrite/delete). append_to_log is confirmation-gated.
 - Current TODO indicates app-level auth for web access is still pending before external exposure.
 
 ## 5. Build, Test, and Quality Commands
@@ -113,6 +162,46 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-11 - Cleanup: single import path for factories; router model back in orchestrator
+- Scope: src/nikitai/agent.py, src/nikitai/orchestrator.py, tests/test_agent.py, tests/test_orchestrator.py, LLM_CONTEXT_LOG.md
+- Summary: (1) Removed orchestrator.py's __all__ re-export of outlook_agent_config / platform_nerd_agent_config. Nothing in the repo (production or tests) imported them via orchestrator except two test identity-asserts, which now reference the canonical subagents.* modules. orchestrator still imports the factories directly to populate SUB_AGENT_REGISTRY, but they have exactly one advertised import path (their own subagents module). (2) Moved resolve_router_model() and DEFAULT_ROUTER_MODEL from agent.py back to orchestrator.py — they are used only by the routing classification call, not by Agent or any sub-agent. Verified there is NO import-cycle reason to keep them in agent.py: agent.py does not import orchestrator, and the helpers depend only on os.environ + a literal default. Router-model tests consolidated in test_orchestrator.py (removed the duplicate set from test_agent.py).
+- Why: one correct import path per factory; keep agent.py strictly core Agent infra and put routing concerns with the orchestrator.
+- Impact: import paths / module boundaries only; runtime behavior unchanged.
+- Validation: pytest -q → 120 passed (was 123; -3 duplicate router-model tests removed from test_agent.py, still covered in test_orchestrator.py). ruff check + ruff format --check clean.
+- Follow-ups: none for this cleanup; Trainer (Garmin) sub-agent still pending as subagents/trainer.py.
+
+### 2026-08-11 - File-level separation: subagents/ package; slim agent.py
+- Scope: src/nikitai/agent.py, src/nikitai/orchestrator.py, src/nikitai/subagents/{__init__,organiser,platform_nerd}.py (new), tests/{test_agent,test_organiser,test_platform_nerd}.py, LLM_CONTEXT_LOG.md
+- Summary: Pure file reorganization, no behavior change. agent.py now holds only the domain-agnostic core: Agent, PendingConfirmation, AgentResponse, build_system_prompt(), resolve_model(), resolve_router_model() (+ DEFAULT_MODEL, DEFAULT_ROUTER_MODEL, UK_TIMEZONE, ToolDispatcher). Moved resolve_router_model()/DEFAULT_ROUTER_MODEL from orchestrator.py into agent.py. Created subagents/ package: organiser.py (SYSTEM_PROMPT_TEMPLATE, TOOL_DEFINITIONS, _execute_tool, outlook_agent_config) and platform_nerd.py (PLATFORM_NERD_* prompt/tools, _execute_platform_nerd_tool, platform_nerd_agent_config). orchestrator.py imports the factories from subagents.* and re-exports outlook_agent_config / platform_nerd_agent_config / resolve_router_model / DEFAULT_ROUTER_MODEL for backward-compatible orchestrator.* access. cli.py/web.py unchanged (they only construct Orchestrator). Split tests to mirror module boundaries: test_agent.py exercises Agent with a fake dispatcher/config + model/router-model/build_system_prompt; test_organiser.py and test_platform_nerd.py patch nikitai.subagents.{organiser,platform_nerd}.* .
+- Why: separation of concerns — keep the reusable Agent free of any domain content so sub-agents are self-contained and easy to add.
+- Impact: import paths only. Public runtime behavior identical; orchestrator.* names preserved via re-export.
+- Validation: pytest -q → 123 passed (was 118; +5 from test-file split/coverage, e.g. test_outlook_config_shape and router-model tests relocated into test_agent.py — no assertions dropped). ruff check + ruff format --check clean (fixed one import-order nit in orchestrator.py). Ran in fresh venv (repo .venv still stale — see earlier entries).
+- Follow-ups: build the Trainer (Garmin) sub-agent as subagents/trainer.py following the same pattern.
+
+### 2026-08-11 - Build & register the Platform Nerd sub-agent (home infra notes)
+- Scope: src/nikitai/tools/logs.py (new), src/nikitai/agent.py, src/nikitai/orchestrator.py, .env.example, tests/test_logs.py (new), tests/test_agent.py, tests/test_orchestrator.py, LLM_CONTEXT_LOG.md
+- Summary: Added tools/logs.py with list_log_files/read_log_file/append_to_log over NIKITAI_HOME_INFRA_NOTES_DIR (env, no default → raises if unset), non-recursive .txt only, tail-with-truncation-note reads, and pure-append writes to existing files. All paths resolved + confined to the notes dir (rejects ../, absolute, symlink-escape); append refuses non-existent files and non-.txt extensions and never truncates/overwrites. Added Platform Nerd domain to agent.py: PLATFORM_NERD_SYSTEM_PROMPT_TEMPLATE (networking/self-hosting expert that reads notes before answering setup questions and offers confirmation-gated logging of config changes), PLATFORM_NERD_TOOL_DEFINITIONS, _execute_platform_nerd_tool dispatcher (token-agnostic; str results pass through, dicts JSON-encoded), and platform_nerd_agent_config() (confirmation set {"append_to_log"}, model via resolve_model("NIKITAI_PLATFORM_NERD_MODEL")). Registered "platform_nerd" in SUB_AGENT_REGISTRY (trainer remains a commented placeholder). .env.example documents NIKITAI_HOME_INFRA_NOTES_DIR (commented).
+- Why: deliver the second working sub-agent (home network / hosting advisor grounded in the user's own notes) while keeping the same config-factory + registry pattern.
+- Impact: infra/networking messages now route to Platform Nerd instead of Organiser. New local filesystem surface, tightly sandboxed to the notes dir; append is confirmation-gated. No change to Outlook behavior.
+- Validation: pytest -q → 118 passed (was 91; +27 across logs path-safety/append rules, platform_nerd config+dispatcher, infra routing; updated 1 stale registry test). ruff check + ruff format --check clean. Ran in fresh venv (repo .venv still stale — see earlier entries). Note: logs tests exercised real symlinks (not skipped) on this machine.
+- Follow-ups: build the Trainer (Garmin) sub-agent next; consider surfacing which sub-agent handled a turn in the UI; consider size/rate limits on append_to_log content.
+
+### 2026-08-11 - Per-sub-agent model selection via env vars
+- Scope: src/nikitai/agent.py, src/nikitai/orchestrator.py, .env.example, README.md, tests/test_agent.py, tests/test_orchestrator.py
+- Summary: Model is now per-sub-agent instead of a single hardcoded/`NIKITAI_MODEL` global. Added `agent.resolve_model(specific_env_var)` with precedence: specific override → `NIKITAI_DEFAULT_MODEL` → hardcoded `agent.DEFAULT_MODEL` ("claude-sonnet-5"). `Agent.__init__` gained a `model` param (stored as `self.model`, used in `_run_loop`'s `messages.create`). `outlook_agent_config()` now sets `model=resolve_model("NIKITAI_ORGANISER_MODEL")`. Orchestrator routing model moved to `orchestrator.resolve_router_model()` (precedence: `NIKITAI_ROUTER_MODEL` → `NIKITAI_DEFAULT_MODEL` → `DEFAULT_ROUTER_MODEL` "claude-haiku-4-5"), replacing the module-level `ROUTER_MODEL` that fell back to the now-removed `NIKITAI_MODEL`. `_classify` calls `resolve_router_model()` per call. Registry placeholders note that platform_nerd/trainer factories will use `resolve_model("NIKITAI_PLATFORM_NERD_MODEL"/"NIKITAI_TRAINER_MODEL")`.
+- Why: let each sub-agent pick a model suited to its workload while sharing one default; route with a cheap model; retire the stale single `NIKITAI_MODEL`.
+- Impact: env-driven model config. `NIKITAI_MODEL` is no longer read anywhere. `.env.example` updated (`NIKITAI_ROUTER_MODEL`, `NIKITAI_DEFAULT_MODEL` uncommented; the three per-sub-agent overrides present but commented as optional). README config section updated.
+- Validation: `pytest -q` → 91 passed (81 prior + 10 new: resolve_model precedence x3, outlook_agent_config override/default, agent uses resolved model, resolve_router_model precedence x3, classify uses resolved router model); `ruff check .` + `ruff format --check .` clean. Ran in fresh venv (repo `.venv` still stale — see earlier entries).
+- Follow-ups: when platform_nerd/trainer factories are built, wire their `resolve_model(...)` calls; consider surfacing the active model in CLI/web for debugging.
+
+### 2026-08-11 - Add orchestrator/routing layer over the generalized Agent
+- Scope: src/nikitai/orchestrator.py (new), src/nikitai/web.py, src/nikitai/cli.py, tests/test_orchestrator.py (new), tests/test_web.py, tests/test_cli.py
+- Summary: Introduced top-level "NikitAI" Orchestrator. `SubAgentSpec(key, display_name, description, config_factory)` + `SUB_AGENT_REGISTRY` (only `organiser` -> `outlook_agent_config`; `platform_nerd`/`trainer` are commented placeholders, not implemented). `Orchestrator.send()` classifies via a cheap ROUTER_MODEL (default Haiku, `NIKITAI_ROUTER_MODEL`) → dispatches to the matching sub-agent's `Agent.send()`, or returns a clarifying question (naming only active sub-agents) on "unclear"/unknown, with no default fallthrough. `Orchestrator.confirm()` routes to the originating sub-agent via a `pending_id -> key` map (never re-classifies) and errors on unknown ids. One Agent is lazily built per sub-agent. web.py holds a single lazy Orchestrator (`get_agent()` returns it); cli.py constructs an Orchestrator. Route handler shapes/error handling unchanged.
+- Why: enable multi-domain routing while keeping Organiser (Outlook) as the only live sub-agent; leave a clean extension point for Platform Nerd and Trainer.
+- Impact: user-visible only when a message is off-topic (now a clarifying prompt instead of always hitting Outlook). Adds one cheap classification LLM call per user message. No change to the approval/confirm gate behavior.
+- Validation: `pytest -q` → 81 passed (72 existing + 9 new orchestrator tests); `ruff check .` clean; `ruff format --check .` clean. (Run in a fresh venv; repo `.venv` still stale — see prior entry.)
+- Follow-ups: implement platform_nerd/trainer config factories before registering them; consider persisting/ejecting sub-agent conversations; router prompt is minimal and may need tuning as sub-agents grow.
 
 ### 2026-08-11 - Make Agent domain-agnostic (reusable for future sub-agents)
 - Scope: src/nikitai/agent.py, src/nikitai/cli.py, src/nikitai/web.py, tests/test_agent.py, tests/test_web.py

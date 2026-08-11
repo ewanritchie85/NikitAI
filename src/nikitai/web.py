@@ -14,7 +14,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .agent import Agent, AgentResponse, outlook_agent_config
+from .agent import AgentResponse
+from .orchestrator import Orchestrator
 
 load_dotenv()
 
@@ -23,18 +24,18 @@ STATIC_DIR = Path(__file__).parent / "static"
 app = FastAPI(title="NikitAI")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-_agent: Agent | None = None
+_orchestrator: Orchestrator | None = None
 
 
-def get_agent() -> Agent:
-    """Returns the single in-memory Agent for this local, single-user session."""
-    global _agent
-    if _agent is None:
+def get_agent() -> Orchestrator:
+    """Returns the single in-memory Orchestrator for this local, single-user session."""
+    global _orchestrator
+    if _orchestrator is None:
         try:
-            _agent = Agent(**outlook_agent_config())
+            _orchestrator = Orchestrator()
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return _agent
+    return _orchestrator
 
 
 class MessageRequest(BaseModel):
@@ -68,7 +69,9 @@ def index() -> FileResponse:
 
 
 @app.post("/message")
-def post_message(payload: MessageRequest, agent: Agent = Depends(get_agent)) -> dict[str, Any]:
+def post_message(
+    payload: MessageRequest, agent: Orchestrator = Depends(get_agent)
+) -> dict[str, Any]:
     try:
         return _serialize(agent.send(payload.text))
     except Exception as exc:
@@ -76,7 +79,9 @@ def post_message(payload: MessageRequest, agent: Agent = Depends(get_agent)) -> 
 
 
 @app.post("/confirm")
-def post_confirm(payload: ConfirmRequest, agent: Agent = Depends(get_agent)) -> dict[str, Any]:
+def post_confirm(
+    payload: ConfirmRequest, agent: Orchestrator = Depends(get_agent)
+) -> dict[str, Any]:
     try:
         return _serialize(agent.confirm(payload.pending_id, payload.approved))
     except Exception as exc:

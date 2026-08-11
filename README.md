@@ -53,8 +53,13 @@ Copy `.env.example` to `.env` and fill in:
 - `AZURE_CLIENT_ID` — from step 1
 - `AZURE_TENANT_ID` — `consumers` for personal accounts, or your tenant ID / `organizations` for work/school
 - `ANTHROPIC_API_KEY` — from https://console.anthropic.com
-- `NIKITAI_MODEL` — optional, defaults to `claude-sonnet-5`. Use a cheaper/faster model
-  for development, and consider `claude-opus-4-8` for harder reasoning tasks if needed.
+- `NIKITAI_ROUTER_MODEL` — optional, model for the orchestrator's routing classification
+  (defaults to `claude-haiku-4-5`). A cheap/fast model is recommended here.
+- `NIKITAI_DEFAULT_MODEL` — optional fallback model for any sub-agent without its own
+  override (defaults to `claude-sonnet-5`).
+- `NIKITAI_ORGANISER_MODEL` / `NIKITAI_PLATFORM_NERD_MODEL` / `NIKITAI_TRAINER_MODEL` —
+  optional per-sub-agent overrides. If unset, the sub-agent uses `NIKITAI_DEFAULT_MODEL`.
+  Consider `claude-opus-4-8` for a sub-agent doing harder reasoning.
 
 ### 5. Run
 

@@ -29,7 +29,7 @@ def test_run_agent_raises_without_api_key(monkeypatch):
         run_agent()
 
 
-@patch("nikitai.cli.Agent")
+@patch("nikitai.cli.Orchestrator")
 @patch("builtins.input", side_effect=["hello", "quit"])
 def test_run_agent_exits_on_quit(mock_input, mock_agent_cls):
     mock_agent = MagicMock()
@@ -42,7 +42,7 @@ def test_run_agent_exits_on_quit(mock_input, mock_agent_cls):
     mock_agent.confirm.assert_not_called()
 
 
-@patch("nikitai.cli.Agent")
+@patch("nikitai.cli.Orchestrator")
 @patch("builtins.input", side_effect=["email bob", "y", "quit"])
 def test_run_agent_confirms_pending_tool_when_approved(mock_input, mock_agent_cls):
     mock_agent = MagicMock()
@@ -60,7 +60,7 @@ def test_run_agent_confirms_pending_tool_when_approved(mock_input, mock_agent_cl
     mock_agent.confirm.assert_called_once_with("p1", True)
 
 
-@patch("nikitai.cli.Agent")
+@patch("nikitai.cli.Orchestrator")
 @patch("builtins.input", side_effect=["email bob", "n", "quit"])
 def test_run_agent_confirms_pending_tool_when_declined(mock_input, mock_agent_cls):
     mock_agent = MagicMock()

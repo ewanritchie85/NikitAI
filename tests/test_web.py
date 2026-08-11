@@ -100,20 +100,13 @@ def test_confirm_declined_calls_agent_with_false():
     assert response.json()["text"] == "Okay, not sending."
 
 
-def test_get_agent_lazily_creates_and_caches_agent(monkeypatch):
-    monkeypatch.setattr(web, "_agent", None)
-    mock_agent_cls = MagicMock()
-    monkeypatch.setattr(web, "Agent", mock_agent_cls)
+def test_get_agent_lazily_creates_and_caches_orchestrator(monkeypatch):
+    monkeypatch.setattr(web, "_orchestrator", None)
+    mock_orchestrator_cls = MagicMock()
+    monkeypatch.setattr(web, "Orchestrator", mock_orchestrator_cls)
 
     first = web.get_agent()
     second = web.get_agent()
 
-    mock_agent_cls.assert_called_once()
-    kwargs = mock_agent_cls.call_args.kwargs
-    assert set(kwargs) == {
-        "system_prompt",
-        "tool_definitions",
-        "tool_dispatcher",
-        "confirmation_required_tools",
-    }
+    mock_orchestrator_cls.assert_called_once_with()
     assert first is second
