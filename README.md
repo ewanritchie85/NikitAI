@@ -27,8 +27,7 @@ Sensitive actions always require explicit approval before anything happens.
 - Web app auth, secure Pi hosting, and external access hardening are still on the
   roadmap (see `todolist.md`).
 
-Quickstart
----------
+## Quickstart
 
 ### 1. Register an Azure AD app (one-time)
 
@@ -75,7 +74,7 @@ Copy `.env.example` to `.env` and fill in:
 - `AZURE_TENANT_ID` — `consumers` for personal accounts, or your tenant ID / `organizations` for work/school
 - `ANTHROPIC_API_KEY` — from https://console.anthropic.com
 - `NIKITAI_ROUTER_MODEL` — optional, model for the orchestrator's routing classification
-  (defaults to `claude-haiku-4-5`). A cheap/fast model is recommended here.
+  (defaults to `claude-haiku-4-5`). A fast and cheap model is recommended here.
 - `NIKITAI_DEFAULT_MODEL` — optional fallback model for any sub-agent without its own
   override (defaults to `claude-sonnet-5`).
 - `NIKITAI_ORGANISER_MODEL` / `NIKITAI_PLATFORM_NERD_MODEL` / `NIKITAI_TRAINER_MODEL` —
