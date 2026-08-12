@@ -6,6 +6,10 @@ Reads and searches your inbox, summarizes your calendar, and can draft/send emai
 create calendar events, and manage mail folders (list, create, delete) on your
 behalf. Sensitive actions always require explicit approval before anything happens.
 
+## Architecture
+
+[![Architecture](https://img.shields.io/badge/docs-architecture-ff9d00)](https://ewanritchie85.github.io/NikitAI/nikitai-architecture.html)
+
 Quickstart
 ---------
 
