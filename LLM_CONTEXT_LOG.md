@@ -163,6 +163,14 @@ Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
 
+### 2026-08-12 - README updated to reflect multi-agent architecture and current status
+- Scope: README.md, LLM_CONTEXT_LOG.md
+- Summary: README intro now describes the Orchestrator + sub-agent model (Organiser + Platform Nerd, Trainer planned). Added "Project status" section (live routing, CLI/web, pending web auth + secure hosting roadmap). Config section documents NIKITAI_HOME_INFRA_NOTES_DIR; safety notes cover Platform Nerd's append_to_log gate and notes-dir sandbox. Dropped stale claude-opus-4-8 recommendation.
+- Why: README still described a single-Outlook-agent tool; repo now routes across domain sub-agents.
+- Impact: docs only; no runtime behavior change.
+- Validation: none needed (docs only).
+- Follow-ups: none.
+
 ### 2026-08-11 - Cleanup: single import path for factories; router model back in orchestrator
 - Scope: src/nikitai/agent.py, src/nikitai/orchestrator.py, tests/test_agent.py, tests/test_orchestrator.py, LLM_CONTEXT_LOG.md
 - Summary: (1) Removed orchestrator.py's __all__ re-export of outlook_agent_config / platform_nerd_agent_config. Nothing in the repo (production or tests) imported them via orchestrator except two test identity-asserts, which now reference the canonical subagents.* modules. orchestrator still imports the factories directly to populate SUB_AGENT_REGISTRY, but they have exactly one advertised import path (their own subagents module). (2) Moved resolve_router_model() and DEFAULT_ROUTER_MODEL from agent.py back to orchestrator.py — they are used only by the routing classification call, not by Agent or any sub-agent. Verified there is NO import-cycle reason to keep them in agent.py: agent.py does not import orchestrator, and the helpers depend only on os.environ + a literal default. Router-model tests consolidated in test_orchestrator.py (removed the duplicate set from test_agent.py).

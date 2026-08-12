@@ -1,16 +1,31 @@
 # NikitAI
 
-AI-powered personal assistant using Claude API with Outlook email and calendar access.
+AI-powered personal assistant using the Claude API, built on a multi-agent
+architecture. A top-level **Orchestrator** routes each message to a domain-specific
+sub-agent:
 
-Reads and searches your inbox, summarizes your calendar, and can draft/send emails,
-create calendar events, and manage mail folders (list, create, delete) on your
-behalf. Sensitive actions always require explicit approval before anything happens.
+- **NikitAI Organiser** — Outlook email and calendar via Microsoft Graph: reads and
+  searches your inbox, summarizes your calendar, and can draft/send emails, create
+  calendar events, and manage mail folders (list, create, delete).
+- **NikitAI Platform Nerd** — home network / self-hosting / Raspberry Pi advisor,
+  grounded in your own local notes files (read + confirmation-gated append).
+
+Sensitive actions always require explicit approval before anything happens.
 
 ## Architecture
 
 <a href="https://ewanritchie85.github.io/NikitAI/nikitai-architecture.html" target="_blank" rel="noopener">
   <img src="https://img.shields.io/badge/docs-architecture-ff9d00" alt="Architecture">
 </a>
+
+## Project status
+
+- Multi-agent orchestrator routing is live, with **Organiser** and **Platform Nerd**
+  as the two working sub-agents.
+- A **Trainer** (Garmin fitness) sub-agent is planned but not yet implemented.
+- Terminal CLI and a minimal local web UI are both available.
+- Web app auth, secure Pi hosting, and external access hardening are still on the
+  roadmap (see `todolist.md`).
 
 Quickstart
 ---------
@@ -65,7 +80,11 @@ Copy `.env.example` to `.env` and fill in:
   override (defaults to `claude-sonnet-5`).
 - `NIKITAI_ORGANISER_MODEL` / `NIKITAI_PLATFORM_NERD_MODEL` / `NIKITAI_TRAINER_MODEL` —
   optional per-sub-agent overrides. If unset, the sub-agent uses `NIKITAI_DEFAULT_MODEL`.
-  Consider `claude-opus-4-8` for a sub-agent doing harder reasoning.
+  Consider a stronger model for a sub-agent doing harder reasoning.
+- `NIKITAI_HOME_INFRA_NOTES_DIR` — optional, required only for the Platform Nerd
+  sub-agent. Absolute path to a LOCAL folder (outside this repo) holding your
+  private home-network / self-hosting notes as `.txt` files. Platform Nerd can read
+  these and append confirmed config-change entries to existing files.
 
 ### 5. Run
 
@@ -94,7 +113,7 @@ make web
 
 (equivalent to `uvicorn nikitai.web:app --reload`)
 
-Then open http://127.0.0.1:8000 in a browser. It's a single-user, single-session
+Then open http://127.0.0.1:8000 in your browser. It's a single-user, single-session
 tool with no auth — don't expose it beyond localhost. Approval-required actions
 (sending email, deleting a mail folder, creating a calendar event) are still gated
 behind explicit Approve/Deny prompts.
@@ -114,12 +133,16 @@ make ci            # install-dev + lint + format-check + coverage (what CI runs)
 
 Safety notes
 ------------
-- `send_email`, `delete_mail_folder`, and `create_calendar_event` always require
-  explicit approval before execution. In CLI this appears as `y/N`; in web UI it
-  appears as Approve/Deny.
-- The agent uses Microsoft Graph delegated permissions (`Mail.Read`, `Mail.Send`,
+- `send_email`, `delete_mail_folder`, `create_calendar_event`, and Platform Nerd's
+  `append_to_log` always require explicit approval before execution. In CLI this
+  appears as `y/N`; in web UI it appears as Approve/Deny.
+- The Organiser uses Microsoft Graph delegated permissions (`Mail.Read`, `Mail.Send`,
   `Calendars.ReadWrite`) and operates only within the signed-in user's mailbox and
   calendar context.
+- Platform Nerd file access is confined to `NIKITAI_HOME_INFRA_NOTES_DIR`: path
+  traversal, absolute paths, and symlinks escaping the directory are rejected;
+  `append_to_log` is pure-append to existing `.txt` files only (no create, overwrite,
+  or delete).
 - Calendar behavior defaults to UK timezone handling (`Europe/London` in prompt
   guidance, `GMT Standard Time` for Graph event creation) unless the user explicitly
   specifies a different timezone.
