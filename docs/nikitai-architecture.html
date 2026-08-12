@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NikitAI — architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0b09;
+    --surface: #121410;
+    --surface-2: #191b15;
+    --border: rgba(255, 157, 0, 0.16);
+    --border-strong: rgba(255, 157, 0, 0.35);
+    --text: #e9e2cf;
+    --text-dim: #9a9384;
+    --text-faint: #6b6558;
+    --amber: #ff9d00;
+    --amber-dim: #b57b2e;
+    --purple: #a78bfa;
+    --purple-dim: #7c6bb0;
+    --teal: #2dd4bf;
+    --teal-dim: #229488;
+    --gray: #7a7867;
+    --danger: #ff6b5e;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: rgba(255, 157, 0, 0.25); }
+
+  a { color: var(--amber); }
+  a:focus-visible, button:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+
+  .frame {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 20px 80px;
+  }
+
+  /* terminal chrome */
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 22px 4px 0;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .bar .dots { display: flex; gap: 6px; margin-right: 8px; }
+  .bar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border-strong); }
+
+  /* hero */
+  .hero { padding: 40px 0 56px; border-bottom: 1px solid var(--border); }
+  .hero h1 {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: clamp(32px, 6vw, 48px);
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+    color: var(--amber);
+  }
+  .hero h1::before { content: "> "; color: var(--amber-dim); }
+  .hero .sub {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--text-dim);
+    margin: 0 0 28px;
+  }
+  .hero .typed::after {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 16px;
+    background: var(--amber);
+    margin-left: 2px;
+    vertical-align: -2px;
+    animation: blink 1s steps(1) infinite;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero .typed::after { animation: blink 1s steps(1) infinite; }
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .hero p.lede {
+    font-size: 17px;
+    color: var(--text);
+    max-width: 60ch;
+    margin: 0;
+  }
+  .hero p.lede code { color: var(--amber); }
+
+  code, .mono { font-family: var(--mono); }
+
+  section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--text-faint);
+    margin: 0 0 8px;
+  }
+  .eyebrow::before { content: "$ "; color: var(--amber-dim); }
+
+  h2 {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 22px;
+    margin: 0 0 14px;
+    color: var(--text);
+  }
+
+  section > p.intro {
+    color: var(--text-dim);
+    max-width: 62ch;
+    margin: 0 0 32px;
+  }
+
+  /* architecture diagram */
+  .arch { display: flex; flex-direction: column; align-items: center; }
+  .arch-box {
+    font-family: var(--mono);
+    text-align: center;
+    padding: 12px 20px;
+    border-radius: 6px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+  }
+  .arch-box .t { font-size: 14px; font-weight: 500; }
+  .arch-box .s { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+  .arch-line { width: 1px; height: 26px; background: var(--border-strong); }
+  .arch-row-wrap {
+    border-top: 1px solid var(--border-strong);
+    padding-top: 26px;
+    width: 100%;
+    max-width: 780px;
+  }
+  .arch-row {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .arch-row .arch-box { flex: 1 1 160px; max-width: 190px; }
+  .arch-row .arch-box.purple { border-color: rgba(167,139,250,0.4); }
+  .arch-row .arch-box.purple .t { color: var(--purple); }
+  .arch-row .arch-box.teal { border-color: rgba(45,212,191,0.4); }
+  .arch-row .arch-box.teal .t { color: var(--teal); }
+  .arch-row .arch-box.planned { border-style: dashed; opacity: 0.75; }
+  .arch-row .arch-box.more { opacity: 0.55; display: flex; flex-direction: column; justify-content: center; }
+  .arch-row .arch-box.more .t { font-size: 20px; color: var(--text-faint); line-height: 1; }
+  .arch-caption {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    text-align: center;
+    margin-top: 22px;
+  }
+
+  /* sub-agent cards */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 700px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+  }
+  .card.purple { border-top: 2px solid var(--purple); }
+  .card.teal { border-top: 2px solid var(--teal); }
+  .card.planned { border-top: 2px dashed var(--gray); }
+  .card .name {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 16px;
+    margin: 0 0 4px;
+  }
+  .card.purple .name { color: var(--purple); }
+  .card.teal .name { color: var(--teal); }
+  .card.planned .name { color: var(--gray); }
+  .card .domain {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    margin: 0 0 12px;
+  }
+  .card .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+    width: fit-content;
+  }
+  .card p.desc { font-size: 13.5px; color: var(--text-dim); margin: 0 0 14px; flex: 1; }
+  .card .toggle {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    color: var(--text-dim);
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    align-self: flex-start;
+    transition: border-color .15s, color .15s;
+  }
+  .card .toggle:hover { border-color: var(--amber-dim); color: var(--amber); }
+  .card .tools {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--border);
+    display: none;
+    font-size: 12.5px;
+  }
+  .card .tools.open { display: block; }
+  .card .tools li { margin-bottom: 8px; }
+  .card .tools li:last-child { margin-bottom: 0; }
+  .card .tools code { color: var(--text); font-size: 12px; }
+  .card .tools .gate { color: var(--danger); font-size: 10px; font-family: var(--mono); margin-left: 6px; }
+  .card .tools .note { display: block; color: var(--text-faint); font-size: 11.5px; margin-top: 2px; }
+  .card.planned .plaque {
+    font-size: 12.5px;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  /* models table */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { font-family: var(--mono); font-size: 11px; color: var(--text-faint); font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; }
+  td code { color: var(--amber); font-size: 12.5px; }
+  td .role { color: var(--text-dim); font-size: 12.5px; }
+
+  /* safety callouts */
+  .safety-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 700px) { .safety-grid { grid-template-columns: 1fr; } }
+  .safety-item {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .safety-item .k { font-family: var(--mono); font-size: 13px; color: var(--amber); margin: 0 0 6px; }
+  .safety-item p { font-size: 13px; color: var(--text-dim); margin: 0; }
+
+  /* roadmap checklist */
+  .checklist { font-family: var(--mono); font-size: 14px; }
+  .checklist .item {
+    display: flex;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: baseline;
+  }
+  .checklist .item:last-child { border-bottom: none; }
+  .checklist .box { color: var(--text-faint); flex-shrink: 0; }
+  .checklist .box.done { color: var(--teal); }
+  .checklist .label { color: var(--text); }
+  .checklist .item.done .label { color: var(--text-dim); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+  .checklist .tag {
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-left: auto;
+    padding-left: 12px;
+  }
+
+  footer {
+    padding-top: 40px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+    text-align: center;
+  }
+  footer a { color: var(--amber-dim); }
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <div class="bar">
+    <span class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+    nikitai — architecture.md
+  </div>
+
+  <header class="hero">
+    <h1>NikitAI</h1>
+    <p class="sub"><span class="typed">$ nikitai --explain architecture</span></p>
+    <p class="lede">
+      A personal assistant AI utilising an ever growing team of sub-agents, controlled by
+      the main <code>orchestrator</code> — instead of one assistant trying to be good at
+      everything.
+    </p>
+  </header>
+
+  <section id="architecture">
+    <p class="eyebrow">how a message gets routed</p>
+    <h2>One entry point, a growing team</h2>
+    <p class="intro">
+      Every message goes through the same orchestrator first. A cost-effective model
+      decides which sub-agent it belongs to. If it's not clear, NikitAI asks rather than
+      guesses.
+    </p>
+
+    <div class="arch">
+      <div class="arch-box"><div class="t">You</div></div>
+      <div class="arch-line"></div>
+      <div class="arch-box"><div class="t">NikitAI</div><div class="s">routes each request</div></div>
+      <div class="arch-line"></div>
+      <div class="arch-row-wrap">
+        <div class="arch-row">
+          <div class="arch-box purple"><div class="t">Organiser</div><div class="s">email &amp; calendar</div></div>
+          <div class="arch-box teal"><div class="t">Platform Nerd</div><div class="s">network &amp; hosting</div></div>
+          <div class="arch-box planned"><div class="t">Trainer</div><div class="s">Garmin — planned</div></div>
+          <div class="arch-box planned more"><div class="t">+</div><div class="s">more, as needed</div></div>
+        </div>
+      </div>
+      <div class="arch-caption">colour = built and live · dashed = registered or open for what's next</div>
+    </div>
+  </section>
+
+  <section id="subagents">
+    <p class="eyebrow">nikitai --list-agents</p>
+    <h2>The specialists</h2>
+    <p class="intro">
+      Each sub-agent has its own system prompt, its own tools, and its own conversation
+      history — switching topics doesn't confuse one agent with another's context.
+    </p>
+
+    <div class="cards">
+      <div class="card purple">
+        <p class="name">Organiser</p>
+        <p class="domain">Outlook — email &amp; calendar</p>
+        <span class="badge">claude-sonnet-5</span>
+        <p class="desc">Reads, searches, and drafts email in your voice. Manages calendar events and mail folders. Never sends anything without you approving it first.</p>
+        <button class="toggle" aria-expanded="false">show tools ▾</button>
+        <ul class="tools">
+          <li><code>list_emails</code>, <code>get_email</code>, <code>search_emails</code><span class="note">read the inbox</span></li>
+          <li><code>send_email</code><span class="gate">requires approval</span><span class="note">drafts a reply, waits for you to confirm</span></li>
+          <li><code>list_mail_folders</code>, <code>move_email</code>, <code>create_mail_folder</code><span class="note">low-risk, reversible writes</span></li>
+          <li><code>delete_mail_folder</code><span class="gate">requires approval</span></li>
+          <li><code>list_calendar_events</code>, <code>create_calendar_event</code><span class="gate">requires approval</span></li>
+        </ul>
+      </div>
+
+      <div class="card teal">
+        <p class="name">Platform Nerd</p>
+        <p class="domain">Home network &amp; hosting</p>
+        <span class="badge">claude-sonnet-5</span>
+        <p class="desc">Reasons about DNS, port forwarding, and self-hosting from real networking principles, reading your own maintained notes to answer setup-specific questions.</p>
+        <button class="toggle" aria-expanded="false">show tools ▾</button>
+        <ul class="tools">
+          <li><code>list_log_files</code>, <code>read_log_file</code><span class="note">reads your infra notes, path-confined to one folder</span></li>
+          <li><code>append_to_log</code><span class="gate">requires approval</span><span class="note">append-only — can't overwrite or create new files</span></li>
+        </ul>
+      </div>
+
+      <div class="card planned">
+        <p class="name">Trainer</p>
+        <p class="domain">Garmin — health &amp; fitness</p>
+        <span class="badge">planned</span>
+        <p class="desc">Registered as a slot in the orchestrator today, with no logic behind it yet. Adding it later means building a new module — not changing how routing works.</p>
+        <div class="plaque">— no tools implemented —</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="models">
+    <p class="eyebrow">nikitai --show-config</p>
+    <h2>Models</h2>
+    <p class="intro">Routing uses a cheap, fast model. Actual reasoning uses a stronger one — configurable per sub-agent.</p>
+    <table>
+      <thead>
+        <tr><th>Purpose</th><th>Model</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="role">Routing classification</span></td><td><code>claude-haiku-4-5</code></td><td><span class="role">Cheap, fast — the task is just "which sub-agent?"</span></td></tr>
+        <tr><td><span class="role">Organiser</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Drafts email, resolves ambiguous phrasing</span></td></tr>
+        <tr><td><span class="role">Platform Nerd</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Real reasoning over networking principles, not just file lookup</span></td></tr>
+        <tr><td><span class="role">Trainer</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Provisional, pending actual design</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="safety">
+    <p class="eyebrow">nikitai --show-safety</p>
+    <h2>Nothing writes without approval</h2>
+    <p class="intro">Every sub-agent follows the same rule, enforced in code — not just prompted for.</p>
+    <div class="safety-grid">
+      <div class="safety-item">
+        <p class="k">reads never pause</p>
+        <p>Listing emails, checking the calendar, reading a log file — none of it needs confirmation.</p>
+      </div>
+      <div class="safety-item">
+        <p class="k">writes always ask</p>
+        <p>Sending mail, creating events, deleting folders, logging a config change — every one shows what it's about to do first.</p>
+      </div>
+      <div class="safety-item">
+        <p class="k">enforced in code</p>
+        <p>The gate is a hard check before the tool runs — not a system-prompt instruction the model could talk itself out of.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="roadmap">
+    <p class="eyebrow">cat todolist.md</p>
+    <h2>What's next</h2>
+    <div class="checklist">
+      <div class="item done"><span class="box done">[x]</span><span class="label">orchestrator + sub-agent split</span></div>
+      <div class="item done"><span class="box done">[x]</span><span class="label">Platform Nerd — home infra logs</span></div>
+      <div class="item"><span class="box">[ ]</span><span class="label">username / password auth for web access</span></div>
+      <div class="item"><span class="box">[ ]</span><span class="label">hosting on a Raspberry Pi, as its own service</span></div>
+      <div class="item"><span class="box">[ ]</span><span class="label">secure external access</span></div>
+      <div class="item"><span class="box">[ ]</span><span class="label">Trainer — Garmin health &amp; fitness</span><span class="tag">parallel track</span></div>
+      <div class="item"><span class="box">[ ]</span><span class="label">voice input / output</span><span class="tag">parallel track, on hold</span></div>
+    </div>
+  </section>
+
+  <footer>
+    built &amp; maintained by <a href="https://github.com/ewanritchie85/NikitAI" target="_blank" rel="noopener">github.com/ewanritchie85/NikitAI</a>
+  </footer>
+
+</div>
+
+<script>
+document.querySelectorAll('.toggle').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var list = btn.nextElementSibling;
+    var open = list.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.textContent = open ? 'hide tools ▴' : 'show tools ▾';
+  });
+});
+</script>
+</body>
+</html>
