@@ -8,7 +8,9 @@ behalf. Sensitive actions always require explicit approval before anything happe
 
 ## Architecture
 
-[![Architecture](https://img.shields.io/badge/docs-architecture-ff9d00)](https://ewanritchie85.github.io/NikitAI/nikitai-architecture.html)
+<a href="https://ewanritchie85.github.io/NikitAI/nikitai-architecture.html" target="_blank" rel="noopener">
+  <img src="https://img.shields.io/badge/docs-architecture-ff9d00" alt="Architecture">
+</a>
 
 Quickstart
 ---------
