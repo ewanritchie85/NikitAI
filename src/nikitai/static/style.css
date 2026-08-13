@@ -168,6 +168,91 @@ body {
   color: #fff;
 }
 
+/* Rendered markdown: fenced code blocks + inline code (marked/DOMPurify output). */
+
+.msg.assistant pre {
+  margin: 0.55em 0 0.2em;
+  padding: 0.6rem 0.8rem;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  white-space: pre;
+  overflow-x: auto;
+  max-width: 100%;
+  position: relative;
+}
+
+.msg.assistant pre code {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.msg.assistant code {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.85em;
+  color: var(--link-color);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 157, 0, 0.15);
+  border-radius: 2px;
+  padding: 0.1em 0.35em;
+}
+
+.msg.assistant pre + * {
+  margin-top: 0.5em;
+}
+
+/* Copy-to-clipboard button on fenced code blocks (top-right corner, hover-revealed). */
+
+.msg.assistant pre .code-copy-btn {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.msg.assistant pre:hover .code-copy-btn,
+.msg.assistant pre .code-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.msg.assistant pre .code-copy-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.msg.assistant pre .code-copy-btn.copied {
+  color: var(--approve);
+  border-color: var(--approve);
+  opacity: 1;
+}
+
 .msg.error {
   background: var(--error-bg);
   border-color: var(--error-border);

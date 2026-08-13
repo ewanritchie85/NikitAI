@@ -2,11 +2,77 @@ const messagesEl = document.getElementById("messages");
 const inputEl = document.getElementById("text-input");
 const sendButton = document.getElementById("send-button");
 
+function renderMarkdown(text) {
+  // markdown → HTML, then sanitized before touching the DOM (model output is
+  // untrusted). Returns null when the parser libs failed to load, so callers can
+  // degrade to plain text instead of throwing.
+  if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+    return null;
+  }
+  return DOMPurify.sanitize(marked.parse(text));
+}
+
+const COPY_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+function addCopyButtons(container) {
+  // Small copy button on each fenced code block. Inserted post-sanitize so the raw
+  // button markup never touches DOMPurify; the code's textContent is unaffected.
+  container.querySelectorAll("pre > code").forEach((code) => {
+    const pre = code.parentElement;
+    if (pre.querySelector(".code-copy-btn")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "code-copy-btn";
+    btn.setAttribute("aria-label", "Copy code");
+    btn.title = "Copy code";
+    btn.innerHTML = COPY_ICON;
+    pre.appendChild(btn);
+  });
+}
+
+function copyText(text) {
+  // navigator.clipboard needs a secure context (HTTPS or localhost); fall back to
+  // the classic execCommand path for plain-HTTP LAN access (e.g. Pi hosting).
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).then(
+      () => true,
+      () => false
+    );
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch (err) {
+    ok = false;
+  }
+  document.body.removeChild(ta);
+  return Promise.resolve(ok);
+}
+
+function flashCopyFeedback(btn, label) {
+  clearTimeout(btn._copyTimer);
+  btn.classList.add("copied");
+  btn.textContent = label;
+  btn._copyTimer = setTimeout(() => {
+    btn.classList.remove("copied");
+    btn.innerHTML = COPY_ICON;
+  }, 1500);
+}
+
 function appendMessage(text, cssClass) {
   const div = document.createElement("div");
   div.className = "msg " + cssClass;
   if (cssClass === "assistant") {
-    div.innerHTML = DOMPurify.sanitize(marked.parse(text));
+    const rendered = renderMarkdown(text);
+    div.innerHTML = rendered !== null ? rendered : text;
+    if (rendered === null) div.textContent = text;
+    if (rendered !== null) addCopyButtons(div);
   } else {
     div.textContent = text;
   }
@@ -135,4 +201,16 @@ async function sendMessage() {
 sendButton.addEventListener("click", sendMessage);
 inputEl.addEventListener("keydown", (event) => {
   if (event.key === "Enter") sendMessage();
+});
+
+// Event delegation on the chat container: copy buttons work no matter when (or how)
+// a code block was inserted, and one listener covers every block in the session.
+messagesEl.addEventListener("click", (event) => {
+  const btn = event.target.closest(".code-copy-btn");
+  if (!btn) return;
+  const code = btn.closest("pre")?.querySelector("code");
+  if (!code) return;
+  copyText(code.textContent).then((ok) => {
+    flashCopyFeedback(btn, ok ? "Copied!" : "Failed");
+  });
 });

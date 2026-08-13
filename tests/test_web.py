@@ -29,6 +29,52 @@ def test_index_serves_html():
     assert "NikitAI" in response.text
 
 
+def test_index_uses_vendored_markdown_libs():
+    client = _client_with_agent(MagicMock())
+
+    response = client.get("/")
+
+    # markdown parser + sanitizer are served locally (offline-safe), not from a CDN.
+    assert "/static/vendor/marked.min.js" in response.text
+    assert "/static/vendor/purify.min.js" in response.text
+    assert "cdn.jsdelivr.net" not in response.text
+
+
+def test_vendored_markdown_libs_are_served():
+    client = _client_with_agent(MagicMock())
+
+    marked = client.get("/static/vendor/marked.min.js")
+    purify = client.get("/static/vendor/purify.min.js")
+
+    assert marked.status_code == 200
+    assert "marked" in marked.text.lower()
+    assert purify.status_code == 200
+    assert "dompurify" in purify.text.lower()
+
+
+def test_script_runs_assistant_markdown_through_parser_and_sanitizer():
+    client = _client_with_agent(MagicMock())
+
+    script = client.get("/static/script.js")
+
+    assert script.status_code == 200
+    assert "renderMarkdown" in script.text
+    assert "DOMPurify.sanitize(marked.parse(text))" in script.text
+
+
+def test_script_adds_copy_button_to_code_blocks():
+    client = _client_with_agent(MagicMock())
+
+    script = client.get("/static/script.js")
+
+    assert script.status_code == 200
+    assert "addCopyButtons" in script.text
+    assert ".code-copy-btn" in script.text
+    assert "navigator.clipboard" in script.text
+    # Delegated handler on the chat container so dynamically inserted blocks work too.
+    assert 'messagesEl.addEventListener("click"' in script.text
+
+
 def test_message_returns_text_reply():
     mock_agent = MagicMock()
     mock_agent.send.return_value = AgentResponse(text="Hi there!")

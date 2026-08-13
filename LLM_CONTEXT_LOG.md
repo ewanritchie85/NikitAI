@@ -44,7 +44,8 @@ Core capabilities currently in repo:
 - Auth/token handling: src/nikitai/auth.py
 - Outlook/Graph tools: src/nikitai/tools/outlook.py
 - Home-infra notes tools: src/nikitai/tools/logs.py (Platform Nerd's read/append tools)
-- Static web assets: src/nikitai/static/
+- Static web assets: src/nikitai/static/ (index.html, script.js, style.css, and
+  vendor/ hosting the vendored marked + DOMPurify min builds - no CDN dependency)
 - Tests: tests/ (test_agent = core; test_organiser / test_platform_nerd = sub-agent configs)
 
 Design notes:
@@ -175,6 +176,22 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-13 - Copy-to-clipboard button on fenced code blocks in the web UI
+- Scope: src/nikitai/static/script.js, src/nikitai/static/style.css, tests/test_web.py, LLM_CONTEXT_LOG.md
+- Summary: After markdown rendering, each `<pre><code>` block in assistant messages gets a small top-right copy button (`addCopyButtons()` in script.js, invoked from appendMessage post-sanitize; `.code-copy-btn` inserted as an absolutely-positioned button inside the pre). Clicks are handled via one delegated listener on `#messages`, so dynamically inserted blocks work. `copyText()` uses `navigator.clipboard.writeText()` in secure contexts (localhost/HTTPS) and falls back to a hidden-textarea `document.execCommand("copy")` for plain-HTTP LAN access (Pi hosting). `flashCopyFeedback()` swaps the button to "Copied!"/"Failed" for ~1.5s (tracked per-button timer) then restores the copy icon. Styling: button is hover-revealed (opacity transition), theme-consistent (JetBrains Mono, muted text, orange hover, green `.copied` state), uses the existing `pre` with `position: relative` added.
+- Why: Claude/Copilot-style code-copy UX for Platform Nerd's bash/yaml/config snippets; no external dependency required.
+- Impact: fenced code blocks now have a copy affordance; raw text (not HTML) is copied via `code.textContent`; secure-context and execCommand fallbacks cover localhost and plain-HTTP LAN.
+- Validation: `make test` → 139 passed (was 138; +1 web test asserting addCopyButtons/navigator.clipboard/delegated handler are present). `node --check` on script.js passes. `make lint` + `make format-check` clean.
+- Follow-ups: optional syntax highlighting (highlight.js/prism) for language-aware coloring; Trainer (Garmin) sub-agent still pending.
+
+### 2026-08-13 - Robust markdown rendering in the web UI (vendored parser + code-block CSS)
+- Scope: src/nikitai/static/index.html, src/nikitai/static/script.js, src/nikitai/static/style.css, src/nikitai/static/vendor/{marked.min.js,purify.min.js} (new), tests/test_web.py, LLM_CONTEXT_LOG.md
+- Summary: Assistant responses were already routed through marked + DOMPurify, but both were loaded from cdn.jsdelivr.net, so the UI broke (or fell back to raw text) wherever the CDN was unreachable — a problem for the local-first / Pi hosting target — and there was no CSS for the rendered output, leaving fenced code blocks unstyled. Now marked@12.0.2 and dompurify@3.2.4 are vendored under static/vendor/ and served locally via the existing /static mount; index.html references them by local path. script.js gained renderMarkdown() (DOMPurify.sanitize(marked.parse(text))) used from appendMessage, degrading to plain textContent if the libs fail to load instead of throwing. Added CSS for .msg.assistant pre (monospace, distinct dark background, padding, border, overflow-x:auto horizontal scroll, no wrap) and inline code spans, plus a pre code reset.
+- Why: model output includes fenced code blocks (bash/yaml/config) that were showing as literal text; the app must render markdown without depending on external CDNs.
+- Impact: fenced + inline code now render as styled code blocks; the UI has no network dependency; a missing-lib failure degrades gracefully to plain text rather than breaking the message.
+- Validation: `make test` → 138 passed (was 135; +3 web tests: index references vendored libs with no cdn.jsdelivr.net, vendor files served 200, script routes assistant text through parser+sanitizer). Node-`vm` smoke test of the vendored marked build confirms fenced blocks → `<pre><code class="language-bash">` and inline → `<code>`. `make lint` + `make format-check` clean. (DOMPurify.sanitize can't execute without a DOM in node; it's the standard browser sanitizer used exactly as before.)
+- Follow-ups: optional syntax highlighting (highlight.js/prism) for language-aware coloring of Platform Nerd's config snippets; Trainer (Garmin) sub-agent still pending.
 
 ### 2026-08-13 - Last-active sub-agent fallback for unclear replies
 - Scope: src/nikitai/orchestrator.py, tests/test_orchestrator.py, LLM_CONTEXT_LOG.md
