@@ -181,6 +181,116 @@ def test_confirm_unknown_pending_id_returns_error(monkeypatch):
     assert result.pending is None
 
 
+def test_send_with_active_pending_routes_reply_straight_to_subagent(monkeypatch):
+    orch = _orchestrator(monkeypatch)
+    orch._pending_routes["p1"] = "organiser"
+
+    mock_agent = MagicMock()
+    mock_agent.resolve_pending_reply.return_value = AgentResponse(text="Sent it!")
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent):
+        result = orch.send("yes")
+
+    # Sticky routing: classifier never runs; the reply goes to the originating agent.
+    mock_agent.resolve_pending_reply.assert_called_once_with("p1", "yes")
+    orch.client.messages.create.assert_not_called()
+    assert result.text == "Sent it!"
+    assert "p1" not in orch._pending_routes
+    assert orch._last_active_key == "organiser"
+
+
+def test_send_with_active_pending_implicit_cancel_reclassifies(monkeypatch):
+    orch = _orchestrator(monkeypatch)
+    orch._pending_routes["p1"] = "organiser"
+    orch.client.messages.create.return_value = _router_response("organiser")
+
+    mock_agent = MagicMock()
+    mock_agent.resolve_pending_reply.return_value = None
+    mock_agent.send.return_value = AgentResponse(text="Here are your emails.")
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent):
+        result = orch.send("yes, and also check my logs")
+
+    # Not a confirmation reply -> pending cancelled, message re-classified normally.
+    mock_agent.resolve_pending_reply.assert_called_once_with("p1", "yes, and also check my logs")
+    mock_agent.send.assert_called_once_with("yes, and also check my logs")
+    orch.client.messages.create.assert_called_once()  # classifier ran for the fresh turn
+    assert "p1" not in orch._pending_routes
+    assert orch._last_active_key == "organiser"
+    assert result.text == "Here are your emails."
+
+
+def test_send_unclear_with_no_last_active_asks_for_clarification(monkeypatch):
+    orch = _orchestrator(monkeypatch, registry=_two_key_registry())
+    orch.client.messages.create.return_value = _router_response("unclear")
+
+    with patch("nikitai.orchestrator.Agent") as mock_agent_cls:
+        result = orch.send("what's the meaning of life?")
+
+    mock_agent_cls.assert_not_called()
+    assert orch._last_active_key is None
+    assert "NikitAI Organiser" in result.text
+    assert "clarify" in result.text.lower()
+
+
+def test_send_unclear_with_last_active_routes_to_last_active(monkeypatch):
+    orch = _orchestrator(monkeypatch, registry=_two_key_registry())
+    orch._last_active_key = "platform_nerd"
+    orch.client.messages.create.return_value = _router_response("unclear")
+
+    mock_agent = MagicMock()
+    mock_agent.send.return_value = AgentResponse(text="Port 443 forwards to your Pi.")
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent):
+        result = orch.send("yes")
+
+    # Off-topic "unclear" reply stays with the previously active sub-agent.
+    mock_agent.send.assert_called_once_with("yes")
+    assert result.text == "Port 443 forwards to your Pi."
+    assert orch._last_active_key == "platform_nerd"
+
+
+def test_send_unregistered_key_with_last_active_routes_to_last_active(monkeypatch):
+    orch = _orchestrator(monkeypatch, registry=_two_key_registry())
+    orch._last_active_key = "platform_nerd"
+    orch.client.messages.create.return_value = _router_response("trainer")
+
+    mock_agent = MagicMock()
+    mock_agent.send.return_value = AgentResponse(text="Port 80 is forwarded.")
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent):
+        result = orch.send("ok")
+
+    mock_agent.send.assert_called_once_with("ok")
+    assert result.text == "Port 80 is forwarded."
+    assert orch._last_active_key == "platform_nerd"
+
+
+def test_send_confident_key_wins_over_last_active(monkeypatch):
+    orch = _orchestrator(monkeypatch, registry=_two_key_registry())
+    orch._last_active_key = "platform_nerd"
+    orch.client.messages.create.return_value = _router_response("organiser")
+
+    mock_agent = MagicMock()
+    mock_agent.send.return_value = AgentResponse(text="Here are your emails.")
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent) as mock_agent_cls:
+        result = orch.send("show my emails")
+
+    # A confidently classified registered key wins over the last-active fallback.
+    assert mock_agent_cls.call_args.kwargs == {"who": "organiser"}
+    mock_agent.send.assert_called_once_with("show my emails")
+    assert result.text == "Here are your emails."
+    assert orch._last_active_key == "organiser"
+
+
+def test_send_sets_last_active_key_on_successful_route(monkeypatch):
+    orch = _orchestrator(monkeypatch)
+    orch.client.messages.create.return_value = _router_response("organiser")
+
+    mock_agent = MagicMock()
+    mock_agent.send.return_value = AgentResponse(text="ok")
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent):
+        orch.send("list my emails")
+
+    assert orch._last_active_key == "organiser"
+
+
 def test_classify_falls_back_to_unclear_on_api_error(monkeypatch):
     orch = _orchestrator(monkeypatch)
     orch.client.messages.create.side_effect = orchestrator.anthropic.APIError(

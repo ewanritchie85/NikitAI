@@ -86,6 +86,31 @@ def test_build_system_prompt_fills_now_placeholder():
     assert "{now}" not in prompt
 
 
+# ── classify_confirmation_reply ──────────────────────────────────────────────
+
+
+def test_classify_confirmation_reply_affirmations():
+    for phrase in ["yes", "Yes", "y", "Y", "yeah!", "okay.", "  sure  ", "go ahead", "please do"]:
+        assert agent.classify_confirmation_reply(phrase) == "affirm"
+
+
+def test_classify_confirmation_reply_negations():
+    for phrase in ["no", "No", "n", "nope", "cancel", "decline", "no thanks", "don't"]:
+        assert agent.classify_confirmation_reply(phrase) == "negate"
+
+
+def test_classify_confirmation_reply_compound_is_other():
+    # Compound messages ("yes, and also check my logs") are out of scope: they are
+    # treated as non-replies so the orchestrator re-classifies them fresh.
+    assert agent.classify_confirmation_reply("yes, and also check my logs") == "other"
+
+
+def test_classify_confirmation_reply_unrelated_text_is_other():
+    assert agent.classify_confirmation_reply("") == "other"
+    assert agent.classify_confirmation_reply("what's the weather?") == "other"
+    assert agent.classify_confirmation_reply("maybe later") == "other"
+
+
 # ── Agent ────────────────────────────────────────────────────────────────────
 
 
@@ -246,3 +271,87 @@ def test_agent_confirm_unknown_id_returns_error(mock_anthropic_cls, mock_get_tok
     assert result.error == "Unknown confirmation id: 'bogus-id'"
     assert result.text is None
     assert result.pending is None
+
+
+# ── resolve_pending_reply (sticky routing) ───────────────────────────────────
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_resolve_pending_reply_affirms_and_executes_tool(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    dispatcher = MagicMock(return_value=("executed", None))
+    tool_input = {"target": "prod"}
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = [
+        _response([_tool_use_block(_GATED_TOOL, "tool_1", tool_input)], "tool_use"),
+        _response([_text_block("Done it!")], "end_turn"),
+    ]
+    mock_anthropic_cls.return_value = mock_client
+
+    instance = _agent(dispatcher=dispatcher)
+    pending = instance.send("do the dangerous thing").pending
+    result = instance.resolve_pending_reply(pending.id, "yes")
+
+    dispatcher.assert_called_once_with(_GATED_TOOL, tool_input, TOKEN)
+    assert result.text == "Done it!"
+    assert pending.id not in instance._pending
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_resolve_pending_reply_negates_and_skips_tool(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    dispatcher = MagicMock(return_value=("executed", None))
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = [
+        _response([_tool_use_block(_GATED_TOOL, "tool_1", {"target": "prod"})], "tool_use"),
+        _response([_text_block("Okay, not doing it.")], "end_turn"),
+    ]
+    mock_anthropic_cls.return_value = mock_client
+
+    instance = _agent(dispatcher=dispatcher)
+    pending = instance.send("do the dangerous thing").pending
+    result = instance.resolve_pending_reply(pending.id, "no")
+
+    dispatcher.assert_not_called()
+    assert result.text == "Okay, not doing it."
+    assert pending.id not in instance._pending
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_resolve_pending_reply_implicit_cancel_clears_pending(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value = _response(
+        [_tool_use_block(_GATED_TOOL, "tool_1", {"target": "prod"})], "tool_use"
+    )
+    mock_anthropic_cls.return_value = mock_client
+
+    instance = _agent()
+    pending = instance.send("do the dangerous thing").pending
+    result = instance.resolve_pending_reply(pending.id, "yes, and also check my logs")
+
+    # Not a confirmation reply: pending cleared, no LLM call for the resolution.
+    assert result is None
+    assert pending.id not in instance._pending
+    mock_client.messages.create.assert_called_once()  # only the original send() call
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_resolve_pending_reply_unknown_pending_returns_none(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    mock_anthropic_cls.return_value = MagicMock()
+
+    instance = _agent()
+    assert instance.resolve_pending_reply("bogus-id", "yes") is None

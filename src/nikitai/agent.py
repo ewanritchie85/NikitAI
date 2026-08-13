@@ -77,6 +77,83 @@ class AgentResponse:
     error: str | None = None
 
 
+# Strict, deterministic reply phrases for resolving a pending confirmation — no LLM
+# judgment call involved. Anything that is not an exact normalized match is treated
+# as "not a confirmation reply" (see classify_confirmation_reply).
+_CONFIRMATION_AFFIRMATIONS: frozenset[str] = frozenset(
+    {
+        "y",
+        "yes",
+        "yeah",
+        "yea",
+        "yep",
+        "yup",
+        "sure",
+        "ok",
+        "okay",
+        "go",
+        "go ahead",
+        "go for it",
+        "do it",
+        "please",
+        "please do",
+        "yes please",
+        "confirm",
+        "confirmed",
+        "proceed",
+        "affirmative",
+        "agreed",
+        "sounds good",
+        "sounds right",
+        "approve",
+        "approved",
+    }
+)
+
+_CONFIRMATION_NEGATIONS: frozenset[str] = frozenset(
+    {
+        "n",
+        "no",
+        "nope",
+        "nah",
+        "cancel",
+        "cancel it",
+        "decline",
+        "declined",
+        "abort",
+        "dont",
+        "don't",
+        "do not",
+        "no thanks",
+        "no thank you",
+        "stop",
+        "never mind",
+        "nevermind",
+        "forget it",
+        "deny",
+        "denied",
+        "not now",
+    }
+)
+
+
+def classify_confirmation_reply(text: str) -> str:
+    """Classify a user reply to a pending confirmation as "affirm", "negate", or "other".
+
+    Strict and deterministic: the text is lowercased, stripped, and shorn of trailing
+    punctuation, then compared exactly against curated phrase sets. No LLM is involved.
+    Anything that is not an exact match — including compound messages like
+    "yes, and also check my logs" — returns "other", so the caller treats it as an
+    implicit cancel and re-routes through normal classification.
+    """
+    normalized = text.strip().lower().rstrip(".!?")
+    if normalized in _CONFIRMATION_AFFIRMATIONS:
+        return "affirm"
+    if normalized in _CONFIRMATION_NEGATIONS:
+        return "negate"
+    return "other"
+
+
 @dataclass
 class _PendingToolUse:
     """Internal state needed to resume a paused conversation turn after confirmation."""
@@ -151,6 +228,28 @@ class Agent:
         self.messages.append({"role": "assistant", "content": pending.assistant_content})
         self.messages.append({"role": "user", "content": outcome})
         return self._run_loop()
+
+    def resolve_pending_reply(self, pending_id: str, user_text: str) -> AgentResponse | None:
+        """Resolve a pending confirmation from a free-text user reply, with no LLM call.
+
+        The orchestrator routes the user's message here verbatim ("sticky routing")
+        instead of re-classifying it, and the decision is strict pattern matching:
+
+        - clear affirmation -> ``confirm(pending_id, approved=True)``: execute it
+        - clear negation    -> ``confirm(pending_id, approved=False)``: cancel it
+        - anything else     -> drop the pending state and return ``None`` (implicit
+          cancel), so the caller can hand the message back to normal classification.
+
+        Returns ``None`` when the message is not a confirmation reply, or when
+        ``pending_id`` is no longer pending.
+        """
+        if pending_id not in self._pending:
+            return None
+        decision = classify_confirmation_reply(user_text)
+        if decision == "other":
+            self._pending.pop(pending_id, None)
+            return None
+        return self.confirm(pending_id, approved=(decision == "affirm"))
 
     def _run_loop(self) -> AgentResponse:
         while True:

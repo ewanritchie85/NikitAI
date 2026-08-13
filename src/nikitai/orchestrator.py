@@ -9,6 +9,16 @@ Flow:
 - ``send()`` runs a cheap classification call to pick a registered sub-agent, then
   dispatches the message to that sub-agent's ``Agent.send()``. If the classifier is
   unsure, it asks the user to clarify rather than guessing.
+- Sticky routing: if a sub-agent is mid-confirmation (a PendingConfirmation is live),
+  the next ``send()`` skips classification and routes the message straight back to
+  that sub-agent, which resolves it by strict pattern matching
+  (``Agent.resolve_pending_reply``). Non-replies are implicit cancels and fall
+  through to normal classification.
+- Last-active fallback: if classification returns "unclear" (or an unregistered key),
+  and a sub-agent was used most recently (``_last_active_key``), the message goes to
+  that sub-agent instead of the clarification prompt. This catches conversational
+  replies like "yes" that arrive before any tool call has raised a PendingConfirmation.
+  A confidently classified registered key always wins over the fallback.
 - ``confirm()`` is routed back to the exact sub-agent instance that produced the
   pending confirmation (never re-classified), via a pending_id -> sub-agent map.
 """
@@ -130,16 +140,46 @@ class Orchestrator:
         # Maps a pending confirmation id to the sub-agent key that produced it, so
         # confirm() never has to re-classify.
         self._pending_routes: dict[str, str] = {}
+        # Key of the most recently used sub-agent. Distinct from _pending_routes: used
+        # as a fallback when the classifier returns "unclear", so off-topic replies
+        # (e.g. a bare conversational "yes" before any tool call has fired) stay with
+        # the sub-agent that was already in conversation.
+        self._last_active_key: str | None = None
 
     # ── Public API ───────────────────────────────────────────────────────────
 
     def send(self, user_text: str) -> AgentResponse:
+        # Sticky-pending routing: if a sub-agent is mid-confirmation, its reply goes
+        # straight back to it without re-classifying. The sub-agent resolves it by
+        # strict pattern matching; if the message isn't a confirmation reply it is an
+        # implicit cancel, and we fall through to normal classification. Separate from
+        # the last-active fallback below; they chain in practice but serve different
+        # phases of the confirmation UX.
+        active = self._active_pending()
+        if active is not None:
+            pending_id, key = active
+            response = self._get_agent(key).resolve_pending_reply(pending_id, user_text)
+            self._pending_routes.pop(pending_id, None)
+            if response is not None:
+                self._last_active_key = key
+                self._track_pending(key, response)
+                return response
+
         key = self._classify(user_text)
         if key not in self.registry:
-            return AgentResponse(text=self._clarify_text())
+            # Last-active fallback: an "unclear" (or unregistered) reply stays with the
+            # most recently used sub-agent — e.g. a bare conversational "yes" to a
+            # "shall I proceed?" that arrives before any tool call has raised a
+            # PendingConfirmation. A simple "was there a last-active key" check, no LLM
+            # call. A confidently classified registered key above would already have
+            # won; this branch only runs when classification found no clear domain.
+            if self._last_active_key is None:
+                return AgentResponse(text=self._clarify_text())
+            key = self._last_active_key
 
         agent = self._get_agent(key)
         response = agent.send(user_text)
+        self._last_active_key = key
         self._track_pending(key, response)
         return response
 
@@ -163,6 +203,16 @@ class Orchestrator:
             agent = Agent(**self.registry[key].config_factory())
             self._agents[key] = agent
         return agent
+
+    def _active_pending(self) -> tuple[str, str] | None:
+        """Return the active (pending_id, sub-agent key), or None if none is pending.
+
+        The orchestrator runs one live turn at a time in a single-user session, so at
+        most one confirmation is active; the first route is returned defensively.
+        """
+        for pending_id, key in self._pending_routes.items():
+            return pending_id, key
+        return None
 
     def _track_pending(self, key: str, response: AgentResponse) -> None:
         if response.pending is not None:

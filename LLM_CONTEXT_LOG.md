@@ -2,7 +2,7 @@
 
 Purpose: single-file, high-signal project state for IDE LLMs and humans.
 
-Last updated: 2026-08-11
+Last updated: 2026-08-13
 Owner: project maintainers + any active coding agent
 
 ## 1. Current Snapshot
@@ -69,6 +69,19 @@ Design notes:
     registered key or "unclear". A known key is dispatched to that sub-agent's
     Agent.send(); "unclear"/unknown returns a clarifying question naming only
     active sub-agents (never a default fallthrough).
+  - send() sticky routing: if a sub-agent has a live PendingConfirmation (the
+    pending_id -> key map is non-empty), the message skips classification and routes
+    straight to that sub-agent's Agent.resolve_pending_reply(), which resolves it by
+    strict pattern matching (classify_confirmation_reply()/phrase sets in agent.py) —
+    affirm executes, negate cancels, anything else clears the pending (implicit
+    cancel) and the message is re-classified fresh.
+  - send() last-active fallback: _last_active_key records the most recently routed
+    sub-agent key (set at the end of every send() that reaches a sub-agent, sticky or
+    classified). If the classifier returns "unclear"/an unregistered key, the message
+    routes to the last-active sub-agent instead of the clarification prompt (which
+    only appears when no sub-agent has ever been active). A confidently classified
+    registered key always wins over the fallback. Distinct from sticky-pending
+    routing; together they enable conversational-confirm -> button-confirm UX.
   - confirm(): routed to the originating sub-agent via a pending_id -> key map
     (populated whenever send()/confirm() returns a pending), never re-classified.
   - One Agent per sub-agent is lazily constructed on first use (same lazy pattern
@@ -162,6 +175,22 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-13 - Last-active sub-agent fallback for unclear replies
+- Scope: src/nikitai/orchestrator.py, tests/test_orchestrator.py, LLM_CONTEXT_LOG.md
+- Summary: Added `Orchestrator._last_active_key` (None initially), updated to the routed key at the end of every `send()` that actually reaches a sub-agent (both the sticky-pending branch and the normal classified branch). When `_classify()` returns "unclear" or an unregistered key, `send()` now falls back to the last-active sub-agent instead of the clarification prompt; only if there is no last-active key does it return `_clarify_text()`. A confidently classified registered key still wins over the fallback (the fallback runs only in the unclear/unregistered branch).
+- Why: pre-orchestrator, a single agent made conversational confirmations ("shall I proceed?" -> "yes") trivial. Post-split, a bare "yes" before any tool call has no domain signal, so the classifier returns "unclear" and it hit the clarification prompt, breaking the two-stage conversational-confirm -> hard-button-confirm UX. This is a separate mechanism from sticky-pending routing (which resolves a live PendingConfirmation via resolve_pending_reply); they chain: unclear -> last-active -> model calls tool -> real PendingConfirmation -> next reply via sticky-pending.
+- Impact: off-topic/unclear replies now stay in conversation with the sub-agent that was last active; the clarification prompt only appears when no sub-agent has been used yet (e.g. first message is ambiguous). No LLM judgment call added — pure in-memory key check. Explicit y/N / Approve-Deny paths unchanged.
+- Validation: `make test` → 135 passed (was 130; +5: unclear-with-no-last-active clarifies, unclear-with-last-active routes, unregistered-key-with-last-active routes, confident-key-wins-over-last-active, last-active set on successful route; +2 assertions added to existing sticky tests). `make lint` + `make format-check` clean.
+- Follow-ups: Trainer (Garmin) sub-agent still pending.
+
+### 2026-08-13 - Sticky routing for pending confirmation replies
+- Scope: src/nikitai/agent.py, src/nikitai/orchestrator.py, tests/test_agent.py, tests/test_orchestrator.py, LLM_CONTEXT_LOG.md
+- Summary: Fixed a confirmation-handling bug where replying "yes"/"no" to a pending confirmation re-ran the router classifier (usually hitting the "unclear" clarification fallback). `Orchestrator.send()` now checks `_active_pending()` (the pending_id -> key map) before classifying; if a sub-agent has a live PendingConfirmation, the message is routed straight to it via new `Agent.resolve_pending_reply(pending_id, user_text)`. That method makes a strict, LLM-free decision with new `classify_confirmation_reply()` (exact normalized match against `_CONFIRMATION_AFFIRMATIONS`/`_CONFIRMATION_NEGATIONS` phrase sets): affirm -> `confirm(approved=True)` (execute), negate -> `confirm(approved=False)` (cancel), anything else -> clear pending and return None so the orchestrator treats it as an implicit cancel and re-classifies the message fresh (compound messages like "yes, and also check my logs" fall here, per scope). Pending state stays purely in-memory on the Agent.
+- Why: replies to a pending confirmation were being treated as brand-new, off-topic messages instead of answers, so actions stalled into a clarification loop.
+- Impact: while a confirmation is pending, a typed "yes"/"no" now resolves it (executes or cancels) without an extra classification LLM call; the explicit CLI y/N and web Approve/Deny paths are unchanged. Non-reply messages arriving mid-pending cancel the pending and get routed normally.
+- Validation: `make test` → 130 passed (was 120; +4 classifier unit tests, +4 agent resolve_pending_reply tests, +2 orchestrator sticky-routing tests). `make lint` and `make format-check` clean.
+- Follow-ups: consider surfacing which sub-agent handled a turn in the UI; Trainer (Garmin) sub-agent still pending.
 
 ### 2026-08-12 - README updated to reflect multi-agent architecture and current status
 - Scope: README.md, LLM_CONTEXT_LOG.md
