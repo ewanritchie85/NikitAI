@@ -17,7 +17,7 @@ Owner: project maintainers + any active coding agent
 
 ## 2. What This Project Does
 
-NikitAI is an AI-powered assistant that integrates with Microsoft Graph (Outlook mail/calendar) and Anthropic models.
+NikitAI is an AI-powered assistant that integrates with Microsoft Graph (Outlook mail/calendar), Garmin Connect health/fitness data, and Anthropic models.
 
 Core capabilities currently in repo:
 - Read/search mailbox content
@@ -25,6 +25,8 @@ Core capabilities currently in repo:
 - Create/send emails (approval-gated)
 - Create calendar events (approval-gated)
 - Manage mail folders (list/create/delete; destructive actions are gated)
+- Fitness training coach over read-only Garmin data (activities, daily summary,
+  sleep, body battery) — no write-back to Garmin yet
 - Web UI + CLI interfaces over shared agent logic
 
 ## 3. Architecture At A Glance
@@ -41,9 +43,14 @@ Core capabilities currently in repo:
   - subagents/organiser.py: Outlook prompt/tools/_execute_tool/outlook_agent_config()
   - subagents/platform_nerd.py: Platform Nerd prompt/tools/_execute_platform_nerd_tool/
     platform_nerd_agent_config()
+  - subagents/trainer.py: NikitAI Trainer prompt/tools/_execute_trainer_tool/
+    trainer_agent_config()
 - Auth/token handling: src/nikitai/auth.py
 - Outlook/Graph tools: src/nikitai/tools/outlook.py
 - Home-infra notes tools: src/nikitai/tools/logs.py (Platform Nerd's read/append tools)
+- Garmin health/fitness tools: src/nikitai/tools/garmin.py (Trainer's read-only tools;
+  lazy Garmin client from GARMIN_CONNECT_USERNAME/PASSWORD + on-disk session at
+  ~/.nikitai_garmin_session via the library's built-in token store)
 - Static web assets: src/nikitai/static/ (index.html, script.js, style.css, and
   vendor/ hosting the vendored marked + DOMPurify min builds - no CDN dependency)
 - Tests: tests/ (test_agent = core; test_organiser / test_platform_nerd = sub-agent configs)
@@ -54,17 +61,16 @@ Design notes:
 - Orchestrator (src/nikitai/orchestrator.py):
   - SubAgentSpec(key, display_name, description, config_factory) describes a
     registered sub-agent; SUB_AGENT_REGISTRY maps key -> spec.
-  - Registry holds "organiser" -> subagents.organiser.outlook_agent_config()
-    (NikitAI Organiser) and "platform_nerd" ->
+  -   Registry holds "organiser" -> subagents.organiser.outlook_agent_config()
+    (NikitAI Organiser), "platform_nerd" ->
     subagents.platform_nerd.platform_nerd_agent_config() (NikitAI Platform Nerd: home
     network / self-hosting / Raspberry Pi / general networking, backed by
-    tools/logs.py). Each factory has exactly ONE canonical import path — its own
+    tools/logs.py), and "trainer" -> subagents.trainer.trainer_agent_config()
+    (NikitAI Trainer: Garmin health/fitness, backed by tools/garmin.py). Each
+    factory has exactly ONE canonical import path — its own
     subagents module; orchestrator imports them only to populate the registry and
     does NOT re-export them. resolve_router_model() / DEFAULT_ROUTER_MODEL live in
     orchestrator.py (routing is an orchestrator concern, not core Agent infra).
-    "trainer" (Garmin) is still registered-but-unimplemented:
-    it exists ONLY as a clearly-marked commented placeholder in orchestrator.py,
-    with no config factory yet — do not add it to the live registry until built.
   - send(): a cheap classification call (resolve_router_model():
     NIKITAI_ROUTER_MODEL → NIKITAI_DEFAULT_MODEL → "claude-haiku-4-5") picks a
     registered key or "unclear". A known key is dispatched to that sub-agent's
@@ -92,8 +98,10 @@ Design notes:
   subagents/organiser.py (outlook_agent_config, dispatcher _execute_tool); Platform
   Nerd wiring in subagents/platform_nerd.py (platform_nerd_agent_config, dispatcher
   _execute_platform_nerd_tool -> tools/logs.py; gated tool set {"append_to_log"},
-  read tools ungated). Sub-agent configs import build_system_prompt/resolve_model
-  from agent.py.
+  read tools ungated); Trainer wiring in subagents/trainer.py (trainer_agent_config,
+  dispatcher _execute_trainer_tool -> tools/garmin.py; confirmation_required_tools
+  is empty — all Trainer tools are read-only). Sub-agent configs import
+  build_system_prompt/resolve_model from agent.py.
 - Platform Nerd notes access (src/nikitai/tools/logs.py): list_log_files /
   read_log_file / append_to_log operate on .txt files inside NIKITAI_HOME_INFRA_NOTES_DIR
   (env, no default — raises if unset). All paths are resolved and confirmed inside that
@@ -102,8 +110,7 @@ Design notes:
 - Model selection is per sub-agent via agent.resolve_model(specific_env_var):
   specific override → NIKITAI_DEFAULT_MODEL → agent.DEFAULT_MODEL ("claude-sonnet-5").
   organiser uses NIKITAI_ORGANISER_MODEL; platform_nerd uses NIKITAI_PLATFORM_NERD_MODEL;
-  a future trainer would use NIKITAI_TRAINER_MODEL. The legacy NIKITAI_MODEL var is no
-  longer read anywhere.
+  trainer uses NIKITAI_TRAINER_MODEL. The legacy NIKITAI_MODEL var is no longer read anywhere.
 - cli.py and web.py now construct a single lazy Orchestrator (not a single Agent).
   web.get_agent() returns the Orchestrator; route handler shapes are unchanged.
 - Approval-required operations return pending confirmation state instead of auto-executing.
@@ -114,6 +121,7 @@ Design notes:
 - Approval gates are expected for high-impact actions (for example sending mail, deleting folders, creating events, appending to infra notes).
 - Graph delegated permissions include mail/calendar scopes; local token cache is used.
 - Platform Nerd file access is confined to NIKITAI_HOME_INFRA_NOTES_DIR: path traversal / absolute / symlink-escape rejected; append is pure-append to existing .txt files only (no create/overwrite/delete). append_to_log is confirmation-gated.
+- Trainer access to Garmin Connect is READ-ONLY (recent activities, activity details, daily summary, sleep, body battery) — no write-back to the account in v1 (no workout logging, no weigh-ins), and no confirmation-gated tools in this domain yet (confirmation_required_tools is empty, though the read-only design keeps escalation trivial for any future write tools). Credentials come from GARMIN_CONNECT_USERNAME/GARMIN_CONNECT_PASSWORD via an UNOFFICIAL client (garminconnect, Cyberjunky's) using real account credentials rather than OAuth — a dedicated, non-critical account is recommended; the token/session cache lives outside the repo at ~/.nikitai_garmin_session.
 - Current TODO indicates app-level auth for web access is still pending before external exposure.
 
 ## 5. Build, Test, and Quality Commands
@@ -141,7 +149,8 @@ Highest-priority sequencing currently documented:
 Parallel/secondary tracks:
 - Voice control integrated into existing chat flow
 - Linux/platform/networking assistant knowledge workflow
-- Garmin data fitness coach integration
+- Trainer (Garmin) shipped read-only (activities/summary/sleep/body battery); deeper
+  coaching features (write-back caution, MFA handling, training plans) can follow
 
 ## 7. Recent Change Signal
 
@@ -176,6 +185,22 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-13 - Harden Garmin authentication flow (once-per-process, resume-first)
+- Scope: src/nikitai/tools/garmin.py, tests/test_garmin.py, LLM_CONTEXT_LOG.md
+- Summary: Reviewed tools/garmin.py's auth flow against three guarantees. (1) Module-level reuse already held: all five tool functions share the cached `_client` built once by `_get_client()`. (2) Resume-first held and is now documented: on the first build, `Garmin.login(SESSION_DIR)` attempts to load the cached session from `~/.nikitai_garmin_session` (refreshing the DI token if nearing expiry) and only falls through to a credential login when the token store is missing/corrupt/missing-tokens — verified against garminconnect 0.3.2 source (load failure is the only path that sets `tokens_loaded=False`; `_refresh_session` swallows its own errors). (3) Fixed one real gap: if `login()` raised, `_client` stayed `None` so every later tool call re-attempted the whole resume+login dance. Added an `_auth_failed` module-level cache so a failed auth is re-raised immediately on subsequent calls — causing at most one Garmin login attempt per process, never a retry merely because one attempt failed. Docstrings/module docstring updated to state the ordering explicitly. The library has no per-request re-login (401 in `_run_request` only triggers `_refresh_session`).
+- Why: guarantee the account is never hammered with repeated credential logins and that the cached session is always preferred over fresh logins.
+- Impact: on auth failure, tool calls fail fast with the same cached error until the process restarts (conservative; avoids lockout). Successful path unchanged: one client per process, session resumed across runs.
+- Validation: `make test` → 162 passed (was 160; +`test_second_tool_call_does_not_trigger_second_login` — two tool calls assert Garmin constructed once + login called once — and +`test_failed_login_is_cached_not_retried_per_call`; existing tests updated to reset `_auth_failed`). `make lint` + `make format-check` clean.
+- Follow-ups: none.
+
+### 2026-08-13 - NikitAI Trainer sub-agent (read-only Garmin health/fitness)
+- Scope: src/nikitai/tools/garmin.py (new), src/nikitai/subagents/trainer.py (new), src/nikitai/orchestrator.py, requirements.txt, .env.example, tests/test_garmin.py (new), tests/test_trainer.py (new), tests/test_orchestrator.py, LLM_CONTEXT_LOG.md
+- Summary: Built and registered the Trainer (Garmin) sub-agent, the final domain in the "NikitAI" trio. tools/garmin.py wraps Cyberjunky's garminconnect client (added as `garminconnect>=0.3.2,<0.3.3` — the last line compatible with the repo's Python 3.11; 0.3.3+ needs 3.12) with a module-level client built lazily from GARMIN_CONNECT_USERNAME/GARMIN_CONNECT_PASSWORD (clear RuntimeError if either is unset) and the library's built-in token store persisted at ~/.nikitai_garmin_session (same spirit as auth.py's MSAL cache), so runs resume the session instead of re-logging in. Five read-only tools: get_recent_activities (condensed type/date/duration/distance/key-stats + id), get_activity_details, get_daily_summary, get_sleep_data, get_body_battery (single-day list unwrapped to a dict). No write-back to Garmin (no workout/weigh-in logging) in this v1. subagents/trainer.py mirrors platform_nerd.py: coaching-judgment system prompt that pulls recent activities/sleep/body battery before answering about how the user is doing or what to do next, TRAINER_TOOL_DEFINITIONS, _execute_trainer_tool dispatcher (token unused; str passes through, dicts JSON-encoded), confirmation_required_tools = set() (nothing gated — everything is read-only), model via resolve_model("NIKITAI_TRAINER_MODEL"). orchestrator.py: removed the commented placeholder and registered "trainer" -> SubAgentSpec(key="trainer", display_name="NikitAI Trainer", description="fitness, workouts, sleep, recovery, and general health/training questions based on Garmin Connect data.", config_factory=trainer_agent_config); module docstring + registry comment updated. .env.example: Garmin creds now commented with a warning that this is an unofficial client using real account credentials (not OAuth), so a dedicated non-shared account is advised.
+- Why: complete the planned sub-agent set; give the assistant a Garmin-grounded fitness coach with read-only access first.
+- Impact: fitness/health/training messages now route to Trainer. New read-only Garmin surface; no confirmation gate needed (no writes). Trainer is the only sub-agent whose external API is unofficial + credential-based — flagged in .env.example and Safety + Auth Boundaries.
+- Validation: `make test` → 160 passed (was 139; +12 tools/garmin incl. env-error, lazy init/caching, summarisation, body-battery unwrap; +8 trainer config/dispatcher; +2 orchestrator: registry includes trainer + fitness message routes to trainer). `make lint` + `make format-check` clean (ruff reformatted 4 files, all checks green). Coverage: tools/garmin.py 98%, subagents/trainer.py 96%.
+- Follow-ups: MFA prompt handling (prompt_mfa callback) for accounts that need it; optionally surface which sub-agent handled a turn in the UI; if future write tools are added to Trainer, gate them via confirmation_required_tools.
 
 ### 2026-08-13 - Copy-to-clipboard button on fenced code blocks in the web UI
 - Scope: src/nikitai/static/script.js, src/nikitai/static/style.css, tests/test_web.py, LLM_CONTEXT_LOG.md

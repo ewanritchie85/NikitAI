@@ -2,8 +2,8 @@
 
 "NikitAI" is the orchestrator; each domain is handled by a sub-agent backed by
 the generalized :class:`~nikitai.agent.Agent`. Sub-agent configurations live under
-:mod:`nikitai.subagents` (Organiser = Outlook, Platform Nerd = home infra). The
-Trainer (Garmin) sub-agent has a reserved registry slot but is not yet implemented.
+:mod:`nikitai.subagents` (Organiser = Outlook, Platform Nerd = home infra,
+Trainer = Garmin health/fitness).
 
 Flow:
 - ``send()`` runs a cheap classification call to pick a registered sub-agent, then
@@ -35,6 +35,7 @@ import anthropic
 from .agent import Agent, AgentResponse
 from .subagents.organiser import outlook_agent_config
 from .subagents.platform_nerd import platform_nerd_agent_config
+from .subagents.trainer import trainer_agent_config
 
 # Last-resort router model if neither NIKITAI_ROUTER_MODEL nor NIKITAI_DEFAULT_MODEL
 # is set. A cheap/fast model is preferred here since routing is a tiny classification.
@@ -73,20 +74,10 @@ class SubAgentSpec:
 
 
 # ── Sub-agent registry ───────────────────────────────────────────────────────
-# Only fully-implemented sub-agents belong here. Reserved future slots are shown
-# as commented placeholders so it's obvious where they plug in — do NOT add them
-# to the live registry until their config factories (prompt + tools + dispatcher)
-# actually exist.
-#
-# Future, not yet implemented. Its config_factory will resolve its model via
-# agent.resolve_model("NIKITAI_TRAINER_MODEL"), which falls back to
+# All fully-implemented sub-agents belong here; each factory has exactly one
+# canonical import path (its own subagents module) and resolves its model via
+# agent.resolve_model("<SPECIFIC>_MODEL"), which falls back to
 # NIKITAI_DEFAULT_MODEL — matching outlook_agent_config().
-#   "trainer": SubAgentSpec(
-#       key="trainer",
-#       display_name="NikitAI Trainer",
-#       description="Garmin health/fitness data and coaching.",
-#       config_factory=trainer_agent_config,  # TODO: not built yet
-#   ),
 SUB_AGENT_REGISTRY: dict[str, SubAgentSpec] = {
     "organiser": SubAgentSpec(
         key="organiser",
@@ -101,6 +92,13 @@ SUB_AGENT_REGISTRY: dict[str, SubAgentSpec] = {
         description="home network configuration, self-hosting, Raspberry Pi, and "
         "general networking/infrastructure questions.",
         config_factory=platform_nerd_agent_config,
+    ),
+    "trainer": SubAgentSpec(
+        key="trainer",
+        display_name="NikitAI Trainer",
+        description="fitness, workouts, sleep, recovery, and general health/training "
+        "questions based on Garmin Connect data.",
+        config_factory=trainer_agent_config,
     ),
 }
 

@@ -11,6 +11,7 @@ from nikitai.agent import AgentResponse, PendingConfirmation
 from nikitai.orchestrator import Orchestrator, SubAgentSpec
 from nikitai.subagents.organiser import outlook_agent_config
 from nikitai.subagents.platform_nerd import platform_nerd_agent_config
+from nikitai.subagents.trainer import trainer_agent_config
 
 
 def _router_response(text: str) -> MagicMock:
@@ -43,6 +44,29 @@ def _two_key_registry() -> dict[str, SubAgentSpec]:
             display_name="NikitAI Platform Nerd",
             description="Home network, self-hosting, Raspberry Pi, networking.",
             config_factory=lambda: {"who": "platform_nerd"},
+        ),
+    }
+
+
+def _three_key_registry() -> dict[str, SubAgentSpec]:
+    return {
+        "organiser": SubAgentSpec(
+            key="organiser",
+            display_name="NikitAI Organiser",
+            description="Outlook email and calendar.",
+            config_factory=lambda: {"who": "organiser"},
+        ),
+        "platform_nerd": SubAgentSpec(
+            key="platform_nerd",
+            display_name="NikitAI Platform Nerd",
+            description="Home network, self-hosting, Raspberry Pi, networking.",
+            config_factory=lambda: {"who": "platform_nerd"},
+        ),
+        "trainer": SubAgentSpec(
+            key="trainer",
+            display_name="NikitAI Trainer",
+            description="Fitness, workouts, sleep, recovery, health.",
+            config_factory=lambda: {"who": "trainer"},
         ),
     }
 
@@ -95,10 +119,31 @@ def test_send_routes_infra_message_to_platform_nerd(monkeypatch):
 
 
 def test_default_registry_includes_platform_nerd():
-    assert set(orchestrator.SUB_AGENT_REGISTRY) == {"organiser", "platform_nerd"}
+    assert set(orchestrator.SUB_AGENT_REGISTRY) == {"organiser", "platform_nerd", "trainer"}
     spec = orchestrator.SUB_AGENT_REGISTRY["platform_nerd"]
     assert spec.display_name == "NikitAI Platform Nerd"
     assert spec.config_factory is platform_nerd_agent_config
+
+
+def test_default_registry_includes_trainer():
+    spec = orchestrator.SUB_AGENT_REGISTRY["trainer"]
+    assert spec.display_name == "NikitAI Trainer"
+    assert spec.config_factory is trainer_agent_config
+
+
+def test_send_routes_fitness_message_to_trainer(monkeypatch):
+    orch = _orchestrator(monkeypatch, registry=_three_key_registry())
+    orch.client.messages.create.return_value = _router_response("trainer")
+
+    mock_agent = MagicMock()
+    mock_agent.send.return_value = AgentResponse(text="Your training load is trending up.")
+
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent) as mock_agent_cls:
+        result = orch.send("how is my recovery looking after this week's runs?")
+
+    assert mock_agent_cls.call_args.kwargs == {"who": "trainer"}
+    mock_agent.send.assert_called_once_with("how is my recovery looking after this week's runs?")
+    assert result.text == "Your training load is trending up."
 
 
 def test_send_unclear_message_asks_for_clarification(monkeypatch):
