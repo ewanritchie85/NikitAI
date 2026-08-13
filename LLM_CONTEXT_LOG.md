@@ -186,6 +186,38 @@ Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
 
+### 2026-08-13 - Architecture page: orchestrator gets its own popup
+- Scope: docs/nikitai-architecture.html, LLM_CONTEXT_LOG.md
+- Summary: The "NikitAI / routes each request" node in the architecture diagram is now clickable (`data-agent="orchestrator"`, amber accent matching the page theme, focus/enter/spc). Popup populated from a new `orchestrator` entry in the `AGENTS` data describing the real behaviour from src/nikitai/orchestrator.py: one entry point, cheap `claude-haiku-4-5` classification call, asks to clarify rather than guessing domains, sticky routing of pending-approval replies straight back to the originating sub-agent, last-active fallback for off-topic chatter, and lazy sub-agent init (auth + setup happen once per session, on first use, since a fresh `Orchestrator` is created per session in cli.py). Added `.arch-box.amber` and `.modal.orchestrator` accent styles; diagram caption generalised from "click a sub-agent" to "click a box to see what it does".
+- Why: the diagram's central entry point was the only box without detail, even though the user-facing flow starts there.
+- Impact: docs/visual only.
+- Validation: python presence checks (clickable box, amber+modal CSS, AGENTS entry, caption) + `node --check` + DOM-stubbed smoke test (open/close, scroll lock, aria-hidden, focus trap) — all PASS.
+- Follow-ups: none.
+
+### 2026-08-13 - Architecture page: modal accessibility, contrast, housekeeping
+- Scope: docs/nikitai-architecture.html, LLM_CONTEXT_LOG.md
+- Summary: (1) Modal a11y: opening the agent popup now locks body scroll (`lockPageScroll`, previous overflow restored on close) and marks the page content inert with `aria-hidden=true` on `.frame` while open; all interactions move to the dialog. Added a focus trap in the global keydown handler — Tab/Shift+Tab cycle within the modal's focusables and can't escape into the page behind; `modalFocusables()` selects dialog buttons/links/tabbables. (2) WCAG-AA contrast: `--text-faint` bumped `#6b6558 → #8a8272` (3.4:1 → 4.6–5.2:1 across --bg/surface/surface2; used for 11–12px labels, `th` headers, eyebrow, hints). (3) Animation hygiene: caret blink now defined once — `@keyframes blink` moved inside the `@media (prefers-reduced-motion: no-preference)` block (it was previously defined unconditionally AND re-applied inside the media query, so reduced-motion users still saw the caret animate and the keyframes shipped even when unused). (4) Footer annotated `· last updated 2026-08-13`.
+- Why: modal failed keyboard/AT isolation (focus could tab into the page, background scrollable) and faint text fell below AA on the darker surfaces; redundant keyframes + missing date broke the page's freshness signal.
+- Impact: docs/visual only. Modal is now fully keyboard-trap-safe and inert-safe; faint labels readable on all three backgrounds.
+- Validation: DOM-stubbed node smoke test — open locks scroll + inerts page + focuses ✕, Shift+Tab from first focusable is defaulted, Escape restores scroll + returns focus, backdrop click closes (all PASS); `node --check` clean; grep shows no residual `safety` refs and a single `@keyframes blink`.
+- Follow-ups: none.
+
+### 2026-08-13 - Architecture page: sub-agent details pop up instead of a separate section
+- Scope: docs/nikitai-architecture.html, LLM_CONTEXT_LOG.md
+- Summary: The static "The Specialists" card section is gone. Clicking an agent box in the "One entry point, a growing team" diagram (organiser/platform_nerd/trainer, `class="arch-box … clickable"`, `data-agent` + role/tabindex/aria-label) now opens a centered modal overlay populated from an in-page `AGENTS` data object (name, domain, model badge, description, tool list with per-tool notes and "requires approval" gates; Trainer shown as fully read-only). Modal styles in CSS (`.modal-backdrop`/`.modal` with per-agent border-top colour via `.modal.organiser/.platform_nerd/.trainer`); modal closes via ✕ button, backdrop click, or Escape; focus returns to the originating box. Old `.cards`/`.card`/`.toggle` CSS and `revealCard`/`scrollIntoView` behaviour removed. Caption updated to "click a sub-agent to see its tools".
+- Why: user wanted the agent detail to pop up in place (no page scrolling) and no longer needed a dedicated specialists section.
+- Impact: docs/visual only. Agent descriptions + tools now accessible from the diagram with no separate section.
+- Validation: agent data-smoke-tested in node with a stubbed DOM — open/close for all three agents renders name/description/tools, no scrollIntoView remains; `node --check` passes on the inline script.
+- Follow-ups: none.
+
+### 2026-08-13 - Architecture page: Trainer shown as built and live
+- Scope: docs/nikitai-architecture.html, LLM_CONTEXT_LOG.md
+- Summary: The visual architecture overview now reflects the Trainer (Garmin) sub-agent as shipped rather than planned. Diagram: Trainer box changed from dashed `planned` ("Garmin — planned") to a solid green accent ("Garmin — health & fitness"). Sub-agent card: converted from the `planned` template to a live card (badge `claude-sonnet-5`, coaching-judgment description, tool list: get_recent_activities, get_activity_details, get_daily_summary, get_sleep_data, get_body_battery with a "read-only — nothing requires approval, nothing is written back to Garmin" note). Models table: Trainer row's "Provisional, pending actual design" updated to "Coaching judgment over training load, recovery, and trends from Garmin data". Roadmap: "Trainer — Garmin health & fitness" ticked [x]. Added --green/--green-dim palette + .arch-box.green/.card.green styles; kept .card.planned styles for future slots.
+- Why: page was stale after the Trainer build; keeps the living architecture doc accurate.
+- Impact: docs/visual only; no runtime behavior change.
+- Validation: structure sanity-checked via grep (green classes, Trainer box/card/table row/roadmap all updated); no tests apply to a static page.
+- Follow-ups: none.
+
 ### 2026-08-13 - Harden Garmin authentication flow (once-per-process, resume-first)
 - Scope: src/nikitai/tools/garmin.py, tests/test_garmin.py, LLM_CONTEXT_LOG.md
 - Summary: Reviewed tools/garmin.py's auth flow against three guarantees. (1) Module-level reuse already held: all five tool functions share the cached `_client` built once by `_get_client()`. (2) Resume-first held and is now documented: on the first build, `Garmin.login(SESSION_DIR)` attempts to load the cached session from `~/.nikitai_garmin_session` (refreshing the DI token if nearing expiry) and only falls through to a credential login when the token store is missing/corrupt/missing-tokens — verified against garminconnect 0.3.2 source (load failure is the only path that sets `tokens_loaded=False`; `_refresh_session` swallows its own errors). (3) Fixed one real gap: if `login()` raised, `_client` stayed `None` so every later tool call re-attempted the whole resume+login dance. Added an `_auth_failed` module-level cache so a failed auth is re-raised immediately on subsequent calls — causing at most one Garmin login attempt per process, never a retry merely because one attempt failed. Docstrings/module docstring updated to state the ordering explicitly. The library has no per-request re-login (401 in `_run_request` only triggers `_refresh_session`).
