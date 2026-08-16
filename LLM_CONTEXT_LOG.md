@@ -12,7 +12,7 @@ Owner: project maintainers + any active coding agent
 - Version: 0.1.0
 - Python: >=3.12 (pyenv 3.12.14, pinned in .python-version)
 - Main branch: main
-- Last known commit: bd1ce78 (readme and .env.example updated)
+- Last known commit: d882908 (Platform Nerd answers succinctly first, expands only on request)
 - Working tree status at log creation: clean
 
 ## 2. What This Project Does
@@ -154,15 +154,14 @@ Parallel/secondary tracks:
 
 ## 7. Recent Change Signal
 
-Recent commits (most recent first at log creation):
-- bd1ce78 readme and .env.example updated
-- 7c87786 gitignore updated
-- e3a7dee scroll bar colour changed ot match scheme
-- 2d3c197 minor tweaks to spacing in style.css
-- c76b61c formatting fixed
-- a8c18dd check timezone for new calendar events removed from agent instruction
-- 3d4935a html/css/js separated into index/style/script files - colour scheme updated
-- 5dd3501 agent made aware of current datetime - following GMT/BST
+Recent commits (most recent first):
+- d882908 Platform Nerd answers succinctly first, expands only on request
+- a0e17f7 Stream web chat replies via SSE so text renders as it arrives
+- 817c65d Trainer answers succinctly first, expands only on request
+- 58ba0c3 Broaden Garmin block cooldown to 403/429 signals and default to 24h
+- f16b7f0 Persist Garmin 429 rate-limit cooldown across processes and bump to Python 3.12 / garminconnect 0.3.10
+- d55d448 architecture.html updated to reflect current build
+- 2800075 Add NikitAI Trainer sub-agent with read-only Garmin tools
 
 ## 8. Known Conventions and Notes
 
@@ -185,6 +184,38 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-16 - README and context log refreshed to current state
+- Scope: README.md, LLM_CONTEXT_LOG.md
+- Summary: README now lists Trainer as a live sub-agent (read-only Garmin) alongside Organiser and Platform Nerd, notes all three answer succinctly-first, and updates Project status (Trainer shipped, web chat streams replies via SSE). Step 4 config gains GARMIN_CONNECT_USERNAME/PASSWORD (with a warning that this is an unofficial, non-OAuth client — use a dedicated account) and NIKITAI_GARMIN_RATE_LIMIT_COOLDOWN. Web-UI section and Safety notes updated (SSE streaming; Garmin SSO block is clientId+account tied, ~24h window, every attempt extends it; 401 wrong-credentials does NOT trigger a cooldown; session cache at ~/.nikitai_garmin_session). Context log: Current Snapshot commit → d882908; Recent Change Signal → d882908/a0e17f7/817c65d/58ba0c3/f16b7f0/d55d448/2800075.
+- Why: README still called Trainer "planned" and lacked Garmin config; snapshot/commit lists were stale.
+- Impact: docs only; no runtime behavior change.
+- Validation: none needed (docs only).
+- Follow-ups: none.
+
+### 2026-08-16 - Fix web streaming crash: onDone is not a function
+- Scope: src/nikitai/static/script.js
+- Summary: consumeStream() called onDone() after the SSE body was exhausted, but no caller (sendMessage/resolvePending) ever passed the callback, so every completed stream reply threw "TypeError: onDone is not a function" (visible only after the full text had already rendered). Removed the dead callback parameter and its call — handleStreamEvent() already finalizes the bubble per event.
+- Why: the reply rendered fine but the console error on every message looked like a failure.
+- Impact: web chat streams cleanly to completion with no post-stream error.
+- Validation: `node --check src/nikitai/static/script.js` clean.
+- Follow-ups: none.
+
+### 2026-08-16 - Platform Nerd answers succinctly first, expands only on request
+- Scope: src/nikitai/subagents/platform_nerd.py
+- Summary: Applied the same succinct-first style the Trainer got: Platform Nerd now leads with the verdict, fix, or key command in a sentence or two (short paragraph max, one most-relevant detail), and only expands into a full walkthrough when the user asks for more detail.
+- Why: consistent reply style across all sub-agents.
+- Impact: shorter default answers from Platform Nerd; deeper detail on explicit request.
+- Validation: `python -m pytest tests/test_platform_nerd.py -q` → 7 passed; ruff check + format clean.
+- Follow-ups: none.
+
+### 2026-08-16 - Trainer answers succinctly first, expands only on request
+- Scope: src/nikitai/subagents/trainer.py
+- Summary: Trainer system prompt now instructs leading with the verdict/key takeaway in a sentence or two, keeping the first reply tight, and only expanding when the user explicitly asks for more detail.
+- Why: first reply from Trainer was verbose; users want a quick take.
+- Impact: shorter default answers from the Trainer sub-agent.
+- Validation: pytest -q → 167 passed; ruff clean.
+- Follow-ups: none.
 
 ### 2026-08-16 - Streaming web chat (SSE): text renders as it arrives
 - Scope: src/nikitai/agent.py, src/nikitai/orchestrator.py, src/nikitai/web.py, src/nikitai/static/script.js, tests/test_agent.py, tests/test_orchestrator.py, tests/test_web.py, LLM_CONTEXT_LOG.md

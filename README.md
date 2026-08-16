@@ -9,6 +9,11 @@ sub-agent:
   calendar events, and manage mail folders (list, create, delete).
 - **NikitAI Platform Nerd** — home network / self-hosting / Raspberry Pi advisor,
   grounded in your own local notes files (read + confirmation-gated append).
+- **NikitAI Trainer** — fitness and training coach over read-only Garmin Connect
+  data (activities, daily summary, sleep, body battery). No write-back to Garmin.
+
+All three sub-agents answer succinctly first and expand only when you ask for more
+detail.
 
 Sensitive actions always require explicit approval before anything happens.
 
@@ -20,9 +25,10 @@ Sensitive actions always require explicit approval before anything happens.
 
 ## Project status
 
-- Multi-agent orchestrator routing is live, with **Organiser** and **Platform Nerd**
-  as the two working sub-agents.
-- A **Trainer** (Garmin fitness) sub-agent is planned but not yet implemented.
+- Multi-agent orchestrator routing is live with **Organiser**, **Platform Nerd**, and
+  **Trainer** as the three working sub-agents.
+- The web UI streams replies as they're generated (SSE), so you don't wait for the
+  full answer before text starts appearing.
 - Terminal CLI and a minimal local web UI are both available.
 - Web app auth, secure Pi hosting, and external access hardening are still on the
   roadmap (see `todolist.md`).
@@ -84,6 +90,14 @@ Copy `.env.example` to `.env` and fill in:
   sub-agent. Absolute path to a LOCAL folder (outside this repo) holding your
   private home-network / self-hosting notes as `.txt` files. Platform Nerd can read
   these and append confirmed config-change entries to existing files.
+- `GARMIN_CONNECT_USERNAME` / `GARMIN_CONNECT_PASSWORD` — optional, required only
+  for the Trainer sub-agent. **Warning:** these are real Garmin account credentials
+  used with an *unofficial* client (Cyberjunky's `garminconnect`) — not OAuth. Use a
+  dedicated, non-critical account and don't password-share it.
+- `NIKITAI_GARMIN_RATE_LIMIT_COOLDOWN` — optional. Seconds to pause Garmin logins
+  after a Garmin-side SSO block (HTTP 429 / Cloudflare 403 / CAPTCHA). Defaults to
+  `86400` (24h — Garmin's observed block window, which every login attempt extends).
+  Set to `0` to disable the persisted cooldown.
 
 ### 5. Run
 
@@ -113,9 +127,9 @@ make web
 (equivalent to `uvicorn nikitai.web:app --reload`)
 
 Then open http://127.0.0.1:8000 in your browser. It's a single-user, single-session
-tool with no auth — don't expose it beyond localhost. Approval-required actions
-(sending email, deleting a mail folder, creating a calendar event) are still gated
-behind explicit Approve/Deny prompts.
+tool with no auth — don't expose it beyond localhost. Replies stream in as they're
+generated. Approval-required actions (sending email, deleting a mail folder, creating
+a calendar event) are still gated behind explicit Approve/Deny prompts.
 
 Development
 -----------
@@ -145,6 +159,10 @@ Safety notes
 - Calendar behavior defaults to UK timezone handling (`Europe/London` in prompt
   guidance, `GMT Standard Time` for Graph event creation) unless the user explicitly
   specifies a different timezone.
+- Garmin SSO blocks are tied to the client ID + account pair and typically last ~24h;
+  every failed login attempt extends the window, so `tools/garmin.py` persists a
+  cooldown (default 24h) and does **not** treat a plain wrong-credentials 401 as a
+  block. Tokens/session cache live outside the repo at `~/.nikitai_garmin_session`.
 - Delete `~/.nikitai_token_cache.json` to force a fresh login / revoke local access.
 
 License

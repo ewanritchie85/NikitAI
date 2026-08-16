@@ -286,25 +286,26 @@
   td code { color: var(--amber); font-size: 12.5px; }
   td .role { color: var(--text-dim); font-size: 12.5px; }
 
-  /* roadmap checklist */
-  .checklist { font-family: var(--mono); font-size: 14px; }
-  .checklist .item {
-    display: flex;
-    gap: 10px;
-    padding: 9px 0;
-    border-bottom: 1px solid var(--border);
-    align-items: baseline;
+  /* future additions */
+  .future-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-family: var(--mono);
+    font-size: 14px;
   }
-  .checklist .item:last-child { border-bottom: none; }
-  .checklist .box { color: var(--text-faint); flex-shrink: 0; }
-  .checklist .box.done { color: var(--teal); }
-  .checklist .label { color: var(--text); }
-  .checklist .item.done .label { color: var(--text-dim); text-decoration: line-through; text-decoration-color: var(--border-strong); }
-  .checklist .tag {
-    font-size: 10px;
-    color: var(--text-faint);
-    margin-left: auto;
-    padding-left: 12px;
+  .future-list li {
+    padding: 9px 0 9px 24px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    color: var(--text);
+  }
+  .future-list li:last-child { border-bottom: none; }
+  .future-list li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: var(--amber-dim);
   }
 
   footer {
@@ -340,7 +341,9 @@
     <p class="intro">
       Every message goes through the same orchestrator first. A cost-effective model
       decides which sub-agent it belongs to. If it's not clear, NikitAI asks rather than
-      guesses.
+      guesses. In the web UI replies stream in as they're generated (SSE) — text
+      appears word-by-word instead of arriving all at once — and every sub-agent
+      answers succinctly first, expanding only when you ask for more.
     </p>
 
     <div class="arch">
@@ -379,21 +382,16 @@
 
   <section id="roadmap">
     <p class="eyebrow">cat todolist.md</p>
-    <h2>What's next</h2>
-    <div class="checklist">
-      <div class="item done"><span class="box done">[x]</span><span class="label">orchestrator + sub-agent split</span></div>
-      <div class="item done"><span class="box done">[x]</span><span class="label">Platform Nerd — home infra logs</span></div>
-      <div class="item"><span class="box">[ ]</span><span class="label">username / password auth for web access</span></div>
-      <div class="item"><span class="box">[ ]</span><span class="label">hosting on a Raspberry Pi, as its own service</span></div>
-      <div class="item"><span class="box">[ ]</span><span class="label">secure external access</span></div>
-      <div class="item done"><span class="box done">[x]</span><span class="label">Trainer — Garmin health &amp; fitness</span></div>
-      <div class="item"><span class="box">[ ]</span><span class="label">voice input / output</span><span class="tag">parallel track, on hold</span></div>
-    </div>
+    <h2>Future Additions</h2>
+    <ul class="future-list">
+      <li>Secure external access via Raspberry Pi service</li>
+      <li>voice input / output</li>
+    </ul>
   </section>
 
 <footer>
     built &amp; maintained by <a href="https://github.com/ewanritchie85/NikitAI" target="_blank" rel="noopener">github.com/ewanritchie85/NikitAI</a>
-    <span> · last updated 2026-08-13</span>
+    <span> · last updated 2026-08-16</span>
   </footer>
 
 </div>
@@ -419,6 +417,8 @@ var AGENTS = {
       ['asks when unsure', '', 'falls back to \u201cwhich area does this relate to?\u201d rather than guessing'],
       ['sticky approvals', '', 'a reply while approval is pending goes straight back to the same sub-agent'],
       ['last-active fallback', '', 'off-topic chatter like a bare \u201cyes\u201d stays with the sub-agent you were just talking to'],
+      ['streams replies', '', 'web chat renders each reply as it\u2019s generated (SSE) \u2014 no waiting for the full answer'],
+      ['succinct-first replies', '', 'sub-agents lead with the verdict and only expand when you ask for more detail'],
       ['lazy sub-agents', '', 'a sub-agent\u2019s auth and setup only happen the first time you use it in that session']
     ]
   },
