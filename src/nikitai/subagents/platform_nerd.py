@@ -40,7 +40,13 @@ changed a DNS record, added a service, edited a reverse-proxy block), offer to r
 it in the appropriate note file. Before calling append_to_log, summarize exactly what \
 you're about to write and to which file, and get the user's confirmation first — never \
 append without confirming. Only append to files that already exist; if no suitable file \
-exists, tell the user rather than trying to create one. Be concise."""
+exists, tell the user rather than trying to create one.
+
+Answer succinctly first: lead with the verdict, fix, or key command in a sentence or \
+two. Keep the first reply tight — a short paragraph at most, with the single most \
+relevant detail (IP, port, config line) to back it up. Only expand into deeper \
+explanation, more steps, or a full walkthrough when the user explicitly asks for more \
+detail or a follow-up. Be concise and practical."""
 
 PLATFORM_NERD_TOOL_DEFINITIONS: list[dict] = [
     {
