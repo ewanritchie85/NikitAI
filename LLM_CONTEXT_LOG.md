@@ -2,7 +2,7 @@
 
 Purpose: single-file, high-signal project state for IDE LLMs and humans.
 
-Last updated: 2026-08-13
+Last updated: 2026-08-16
 Owner: project maintainers + any active coding agent
 
 ## 1. Current Snapshot
@@ -10,7 +10,7 @@ Owner: project maintainers + any active coding agent
 - Project: NikitAI
 - Package: nikitai
 - Version: 0.1.0
-- Python: >=3.8
+- Python: >=3.12 (pyenv 3.12.14, pinned in .python-version)
 - Main branch: main
 - Last known commit: bd1ce78 (readme and .env.example updated)
 - Working tree status at log creation: clean
@@ -166,7 +166,7 @@ Recent commits (most recent first at log creation):
 
 ## 8. Known Conventions and Notes
 
-- Ruff is the formatter/linter (line length 100, target py38).
+- Ruff is the formatter/linter (line length 100, target py312).
 - CI path is effectively: install-dev + lint + format-check + coverage.
 - Existing repo memory notes indicate previous package rename history and current module layout around confirmation flow and web integration.
 
@@ -185,6 +185,22 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-16 - Persist Garmin 429 rate-limit cooldown across processes
+- Scope: src/nikitai/tools/garmin.py, tests/test_garmin.py, .env.example, LLM_CONTEXT_LOG.md
+- Summary: Garmin started returning HTTP 429 (IP rate limit) on login (mobile+cffi/mobile+requests 429, widget failed on an unexpected SSO page). Because `_auth_failed` is in-memory only, every new process (each web session / CLI run) immediately re-ran the full 5-strategy login and *extended* the lockout. Added a persisted cooldown sentinel inside SESSION_DIR (`rate_limited_until`, epoch timestamp): a 429 now writes `time.time() + NIKITAI_GARMIN_RATE_LIMIT_COOLDOWN` (default 3600s; `0` disables), `_get_client()` fails fast with a clear message while it is unexpired (no network calls, no Garmin construction), and a successful login clears the sentinel. Helpers `_rate_limited_until`/`_write_rate_limit`/`_clear_rate_limit`; corrupt/missing sentinel falls back to allowing a login.
+- Why: stop the app from hammering Garmin's login endpoints after an IP rate limit, so the cooldown can actually elapse instead of being repeatedly reset by restart-triggered logins.
+- Impact: after a 429, Trainer tool calls across all processes fail fast with a readable "rate-limited, try again later" error for up to the cooldown; the IP stops accumulating new login attempts. Successful sessions are unaffected. New env var documented in .env.example.
+- Validation: `make test` → 165 passed (was 162; +3: 429 persists sentinel, unexpired cooldown fails fast with Garmin never constructed, expired cooldown allows login and clears sentinel). `ruff check .` + `ruff format --check .` clean.
+- Follow-ups: root cause is repeated credential logins because no cached session has ever been persisted (SESSION_DIR was empty); once a valid token is saved, login is skipped entirely. Account confirmed to have no MFA, so no `prompt_mfa` wiring needed.
+
+### 2026-08-16 - Python 3.12 bump + garminconnect 0.3.2 → 0.3.10
+- Scope: pyproject.toml, requirements.txt, .github/workflows/ci.yml, Dockerfile, .python-version (new), src/nikitai/tools/garmin.py, src/nikitai/tools/outlook.py, src/nikitai/agent.py, tests/test_outlook.py, LLM_CONTEXT_LOG.md
+- Summary: (1) Python floor raised 3.8 → 3.12: `requires-python` and Ruff `target-version` bumped to py312 in pyproject.toml; CI workflow now tests on 3.12 and Dockerfile uses python:3.12-slim; `.python-version` (new, 3.12.14) added via pyenv. `.venv` deleted and recreated against 3.12.14. (2) garminconnect pin `>=0.3.2,<0.3.3` → `>=0.3.10,<0.4.0` (0.3.10 confirmed latest on PyPI, requires Python ≥3.12). All deps resolved cleanly under 3.12 (`pip check` clean; requests resolved to 2.34.2, above the library's `>=2.33.0`). (3) `_auth_failed` review: no functional change needed. 0.3.5+'s `login()` self-healing (clears stale state on entry, discards API-rejected cached tokens and retries credentials) and typed failures (GarminConnectAuthenticationError / TooManyRequests / Connection) are entirely internal to the single `login()` call `_get_client` makes, and `_run_request` only does an in-library token refresh on 401 — so the at-most-one-login-per-process guarantee still holds. Docstrings updated to document the layering; `SESSION_DIR.mkdir(...)` now passes `mode=0o700` as defense-in-depth. (4) Token-store security fix verified on macOS by dry-run `dump()` (no network): token file written 0o600 inside a 0o700 dir; the real path `~/.nikitai_garmin_session` (`/Users/...`) has no symlinked ancestors, so 0.3.10's symlink-ancestry rejection (which refuses `/var/folders/...` temp paths on macOS) doesn't affect it. (5) Ruff py312 target surfaced 7 pre-existing issues, all fixed with `ruff --fix`: UP017 `datetime.UTC` in tools/outlook.py + test_outlook.py, I001 import sort in agent.py. (6) Environment fix: on this macOS machine a background process re-applies the UF_HIDDEN flag to the whole `.venv` tree, so CPython's site.py skips pip's editable `__editable__*.pth` and `src/` never reaches sys.path (the likely cause of the recurring "repo .venv still stale" notes). Added a venv-local `sitecustomize.py` that appends `src/` to sys.path — module imports are unaffected by the flag, only `.pth` processing is. Not tracked by git.
+- Why: garminconnect 0.3.3+ requires Python 3.12, so the Python bump is mandatory to unblock the pinned library upgrade; 0.3.10 is a security-hardened release (token store 0o600/0o700, symlink rejection, JWT hardening, typed auth failures) worth the pin.
+- Impact: project now requires Python ≥3.12 (pyenv 3.12.14); Garmin session tokens are locked down on disk regardless of umask; failed logins still fail fast once per process (unchanged); dev venv on this machine now imports the package reliably. No live Garmin login was performed.
+- Validation: `make check` → lint + format-check clean, 162 passed (was 162). `pip check` clean under 3.12.14. Dry-run `dump()` verified dir 0o700 / file 0o600 on macOS.
+- Follow-ups: if the UF_HIDDEN/sitecustomize workaround seems off, investigate the daemon re-flagging `.venv`; consider bumping the direct `requests>=2.32.0` pin to `>=2.33.0` to match garminconnect's declared floor (currently harmless, pip resolves higher).
 
 ### 2026-08-13 - Architecture page: orchestrator gets its own popup
 - Scope: docs/nikitai-architecture.html, LLM_CONTEXT_LOG.md

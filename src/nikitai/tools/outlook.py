@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import calendar
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -132,7 +132,7 @@ def list_calendar_events(
     end: str | None = None,
     limit: int = 10,
 ) -> list[dict]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start_dt = start or now.strftime("%Y-%m-%dT%H:%M:%SZ")
     if end:
         end_dt = end

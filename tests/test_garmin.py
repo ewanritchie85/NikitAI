@@ -6,6 +6,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from garminconnect import GarminConnectTooManyRequestsError
 
 from nikitai.tools import garmin
 
@@ -97,6 +98,69 @@ def test_failed_login_is_cached_not_retried_per_call(monkeypatch, tmp_path):
 
     mock_garmin.assert_called_once()
     client.login.assert_called_once()
+
+
+def test_failed_login_429_persists_cooldown_across_processes(monkeypatch, tmp_path):
+    monkeypatch.setenv("GARMIN_CONNECT_USERNAME", "user")
+    monkeypatch.setenv("GARMIN_CONNECT_PASSWORD", "pass")
+    monkeypatch.setattr(garmin, "SESSION_DIR", tmp_path)
+    monkeypatch.setattr(garmin, "RATE_LIMIT_COOLDOWN_SECONDS", 3600)
+    monkeypatch.setattr(garmin, "_client", None)
+    monkeypatch.setattr(garmin, "_auth_failed", None)
+
+    client = MagicMock()
+    client.login.side_effect = GarminConnectTooManyRequestsError("429 from Garmin")
+    with patch("nikitai.tools.garmin.Garmin", return_value=client):
+        with pytest.raises(GarminConnectTooManyRequestsError):
+            garmin.get_daily_summary()
+
+    # A 429 writes a sentinel into the session dir so a *future* process (fresh
+    # module state) fails fast instead of re-hammering the login endpoints.
+    sentinel = tmp_path / garmin._RATE_LIMIT_SENTINEL
+    assert sentinel.exists()
+    assert float(sentinel.read_text().strip()) > garmin.time.time()
+
+
+def test_unexpired_cooldown_fails_fast_without_network(monkeypatch, tmp_path):
+    monkeypatch.setenv("GARMIN_CONNECT_USERNAME", "user")
+    monkeypatch.setenv("GARMIN_CONNECT_PASSWORD", "pass")
+    monkeypatch.setattr(garmin, "SESSION_DIR", tmp_path)
+    monkeypatch.setattr(garmin, "_client", None)
+    monkeypatch.setattr(garmin, "_auth_failed", None)
+
+    future = garmin.time.time() + 600
+    (tmp_path / garmin._RATE_LIMIT_SENTINEL).write_text(str(future))
+
+    # No Garmin client is ever constructed and no login attempted while the
+    # cooldown is still active — the sentinel alone short-circuits.
+    with patch("nikitai.tools.garmin.Garmin") as mock_garmin:
+        with pytest.raises(GarminConnectTooManyRequestsError, match="rate-limiting"):
+            garmin.get_daily_summary()
+        with pytest.raises(GarminConnectTooManyRequestsError, match="rate-limiting"):
+            garmin.get_recent_activities()
+
+    mock_garmin.assert_not_called()
+
+
+def test_expired_cooldown_allows_login_and_clears_sentinel(monkeypatch, tmp_path):
+    monkeypatch.setenv("GARMIN_CONNECT_USERNAME", "user")
+    monkeypatch.setenv("GARMIN_CONNECT_PASSWORD", "pass")
+    monkeypatch.setattr(garmin, "SESSION_DIR", tmp_path)
+    monkeypatch.setattr(garmin, "_client", None)
+    monkeypatch.setattr(garmin, "_auth_failed", None)
+
+    past = garmin.time.time() - 60
+    (tmp_path / garmin._RATE_LIMIT_SENTINEL).write_text(str(past))
+
+    client = MagicMock()
+    client.get_stats.return_value = {"steps": 9000}
+    with patch("nikitai.tools.garmin.Garmin", return_value=client):
+        result = garmin.get_daily_summary()
+
+    # Login proceeded and the sentinel was cleared so it can't gate future runs.
+    client.login.assert_called_once_with(str(tmp_path))
+    assert not (tmp_path / garmin._RATE_LIMIT_SENTINEL).exists()
+    assert result == {"steps": 9000}
 
 
 # ── get_recent_activities ────────────────────────────────────────────────────

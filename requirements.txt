@@ -1,5 +1,5 @@
 anthropic>=0.28.0
-garminconnect>=0.3.2,<0.3.3
+garminconnect>=0.3.10,<0.4.0
 msal>=1.28.0
 requests>=2.32.0
 python-dotenv>=1.0.0

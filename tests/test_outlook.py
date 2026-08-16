@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -233,7 +233,7 @@ def test_delete_mail_folder_calls_correct_endpoint(mock_delete):
 @patch("nikitai.tools.outlook._get")
 @patch("nikitai.tools.outlook.datetime")
 def test_list_calendar_events_defaults_computed_from_now(mock_datetime, mock_get):
-    fixed_now = datetime(2026, 1, 15, 9, 0, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 1, 15, 9, 0, 0, tzinfo=UTC)
     mock_datetime.now.return_value = fixed_now
 
     mock_get.return_value = {"value": [{"id": "evt1"}]}
@@ -251,7 +251,7 @@ def test_list_calendar_events_defaults_computed_from_now(mock_datetime, mock_get
 @patch("nikitai.tools.outlook._get")
 @patch("nikitai.tools.outlook.datetime")
 def test_list_calendar_events_handles_december_year_rollover(mock_datetime, mock_get):
-    fixed_now = datetime(2026, 12, 31, 8, 0, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 12, 31, 8, 0, 0, tzinfo=UTC)
     mock_datetime.now.return_value = fixed_now
 
     mock_get.return_value = {"value": []}
@@ -267,7 +267,7 @@ def test_list_calendar_events_handles_december_year_rollover(mock_datetime, mock
 @patch("nikitai.tools.outlook._get")
 @patch("nikitai.tools.outlook.datetime")
 def test_list_calendar_events_clamps_day_to_shorter_month(mock_datetime, mock_get):
-    fixed_now = datetime(2026, 1, 31, 8, 0, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 1, 31, 8, 0, 0, tzinfo=UTC)
     mock_datetime.now.return_value = fixed_now
 
     mock_get.return_value = {"value": []}
@@ -282,7 +282,7 @@ def test_list_calendar_events_clamps_day_to_shorter_month(mock_datetime, mock_ge
 @patch("nikitai.tools.outlook._get")
 @patch("nikitai.tools.outlook.datetime")
 def test_list_calendar_events_uses_explicit_start_and_end(mock_datetime, mock_get):
-    mock_datetime.now.return_value = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    mock_datetime.now.return_value = datetime(2026, 1, 1, tzinfo=UTC)
     mock_get.return_value = {"value": []}
 
     outlook.list_calendar_events(
@@ -298,7 +298,7 @@ def test_list_calendar_events_uses_explicit_start_and_end(mock_datetime, mock_ge
 @patch("nikitai.tools.outlook._get")
 @patch("nikitai.tools.outlook.datetime")
 def test_list_calendar_events_missing_value_key_returns_empty_list(mock_datetime, mock_get):
-    mock_datetime.now.return_value = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    mock_datetime.now.return_value = datetime(2026, 1, 1, tzinfo=UTC)
     mock_get.return_value = {}
 
     assert outlook.list_calendar_events(TOKEN) == []
