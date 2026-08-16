@@ -27,14 +27,21 @@ never causes more than one ``login()`` invocation per process. Per-request 401s
 after a successful login trigger only an in-library token refresh, not a
 credential re-login.
 
-Garmin also rate-limits logins per IP (HTTP 429) when too many credential
-attempts arrive in a short window. Because ``_auth_failed`` only lives in
-memory, a *new* process (e.g. a restarted web session) would immediately
-re-attempt the full login and extend the lockout. To break that loop, a 429 is
-persisted to a sentinel file inside ``SESSION_DIR`` (``rate_limited_until``,
-an epoch timestamp); while it is unexpired, ``_get_client()`` fails fast with a
-clear error and makes no network calls. The sentinel is cleared automatically on
-a successful login. The cooldown defaults to 1 hour and is tunable via
+Garmin also rate-limits SSO logins (HTTP 429) after too many credential
+attempts. Community analysis (garminconnect issue #344) shows the block is tied
+to the ``clientId`` + account email combination rather than purely the IP, that
+*browser* login at connect.garmin.com keeps working while it is active, and that
+every failed login attempt resets/extends the block timer — the only confirmed
+recovery is roughly 24 hours of zero login attempts. Because ``_auth_failed``
+only lives in memory, a *new* process (e.g. a restarted web session) would
+immediately re-attempt the full login and extend the lockout. To break that
+loop, a login failure that signals a Garmin-side block (HTTP 429, the Cloudflare
+bot challenge 403, or a CAPTCHA prompt — not a plain 401, which can equally mean
+genuinely bad credentials) is persisted to a sentinel file inside ``SESSION_DIR``
+(``rate_limited_until``, an epoch timestamp); while it is unexpired,
+``_get_client()`` fails fast with a clear error and makes no network calls. The
+sentinel is cleared automatically on a successful login. The cooldown defaults
+to 24 hours (Garmin's observed block window) and is tunable via
 ``NIKITAI_GARMIN_RATE_LIMIT_COOLDOWN`` (seconds; ``0`` disables the persisted
 cooldown).
 """
@@ -47,14 +54,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from garminconnect import Garmin, GarminConnectTooManyRequestsError
+from garminconnect import (
+    Garmin,
+    GarminConnectAuthenticationError,
+    GarminConnectConnectionError,
+    GarminConnectTooManyRequestsError,
+)
 
 # Session/token store, outside the repository (matches auth._TOKEN_CACHE_PATH).
 SESSION_DIR = Path.home() / ".nikitai_garmin_session"
 # Sentinel file storing an epoch timestamp until which login is paused after a
-# Garmin HTTP 429 (IP rate limit). Distinct from the library's token files.
+# Garmin-side block (429 / Cloudflare 403 / CAPTCHA). Distinct from the library's
+# token files.
 _RATE_LIMIT_SENTINEL = "rate_limited_until"
-RATE_LIMIT_COOLDOWN_SECONDS = int(os.environ.get("NIKITAI_GARMIN_RATE_LIMIT_COOLDOWN", "3600"))
+# Garmin's observed SSO block window is ~24h, and every failed attempt extends
+# it, so the persisted cooldown defaults to a full day.
+RATE_LIMIT_COOLDOWN_SECONDS = int(os.environ.get("NIKITAI_GARMIN_RATE_LIMIT_COOLDOWN", "86400"))
 
 _client: Garmin | None = None
 # A failed authentication (resume or fresh login) is cached here so subsequent
@@ -92,6 +107,32 @@ def _clear_rate_limit() -> None:
         pass
 
 
+def _is_block_signal(exc: Exception) -> bool:
+    """Return True when a login failure indicates a Garmin-side block worth a cooldown.
+
+    Garmin's SSO block surfaces differently per strategy, so we persist the
+    sentinel on any of the unambiguous block signals rather than only a typed
+    429: the HTTP 429 itself, the Cloudflare bot-challenge 403, or a CAPTCHA
+    prompt. A plain 401 (``GarminConnectAuthenticationError``) is deliberately
+    *not* treated as a block — it can equally mean genuinely bad credentials,
+    and locking the account out for 24h on a typo'd password would be worse.
+    """
+    if isinstance(exc, GarminConnectTooManyRequestsError):
+        return True
+    if isinstance(exc, GarminConnectAuthenticationError):
+        return False
+    msg = str(exc).lower()
+    return any(
+        hint in msg
+        for hint in (
+            "403",
+            "cloudflare",
+            "bot challenge",
+            "captcha",
+        )
+    )
+
+
 def _get_client() -> Garmin:
     """Return the module-level Garmin client, created lazily and exactly once.
 
@@ -119,16 +160,18 @@ def _get_client() -> Garmin:
     if _auth_failed is not None:
         raise _auth_failed
 
-    # Fail fast (no network) while a Garmin IP rate limit is still in effect.
-    # Without this, every new process would immediately re-attempt the full
-    # 5-strategy login and extend the lockout.
+    # Fail fast (no network) while a Garmin-side block (429 / Cloudflare 403 /
+    # CAPTCHA) is still in effect. Without this, every new process would
+    # immediately re-attempt the full 5-strategy login and extend the lockout.
     until = _rate_limited_until()
     if until > time.time():
-        minutes = max(1, round((until - time.time()) / 60))
+        hours = max(1, round((until - time.time()) / 3600))
         _auth_failed = GarminConnectTooManyRequestsError(
-            "Garmin is rate-limiting this IP after too many login attempts "
-            f"(HTTP 429). Login is paused for ~{minutes} minute(s). Try again "
-            "later — repeated attempts extend the lockout."
+            "Garmin is blocking SSO logins for this account after too many "
+            "login attempts. Login is paused for ~"
+            f"{hours} hour(s) and the block timer is NOT being extended — "
+            "any login attempt would only reset the cooldown. Please wait. "
+            "You can still sign in via the web at connect.garmin.com."
         )
         raise _auth_failed
 
@@ -147,6 +190,11 @@ def _get_client() -> Garmin:
         client.login(str(SESSION_DIR))
     except GarminConnectTooManyRequestsError as exc:
         _write_rate_limit()
+        _auth_failed = exc
+        raise
+    except GarminConnectConnectionError as exc:
+        if _is_block_signal(exc):
+            _write_rate_limit()
         _auth_failed = exc
         raise
     except Exception as exc:  # noqa: BLE001

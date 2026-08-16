@@ -6,7 +6,11 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-from garminconnect import GarminConnectTooManyRequestsError
+from garminconnect import (
+    GarminConnectAuthenticationError,
+    GarminConnectConnectionError,
+    GarminConnectTooManyRequestsError,
+)
 
 from nikitai.tools import garmin
 
@@ -121,6 +125,50 @@ def test_failed_login_429_persists_cooldown_across_processes(monkeypatch, tmp_pa
     assert float(sentinel.read_text().strip()) > garmin.time.time()
 
 
+def test_failed_login_cloudflare_403_persists_cooldown(monkeypatch, tmp_path):
+    monkeypatch.setenv("GARMIN_CONNECT_USERNAME", "user")
+    monkeypatch.setenv("GARMIN_CONNECT_PASSWORD", "pass")
+    monkeypatch.setattr(garmin, "SESSION_DIR", tmp_path)
+    monkeypatch.setattr(garmin, "RATE_LIMIT_COOLDOWN_SECONDS", 3600)
+    monkeypatch.setattr(garmin, "_client", None)
+    monkeypatch.setattr(garmin, "_auth_failed", None)
+
+    # Garmin's block can surface as a Cloudflare bot-challenge 403 (the error the
+    # Trainer sub-agent reported) instead of a typed 429 — treat it the same way.
+    client = MagicMock()
+    client.login.side_effect = GarminConnectConnectionError(
+        "Portal login: HTTP 403 (Cloudflare bot challenge)"
+    )
+    with patch("nikitai.tools.garmin.Garmin", return_value=client):
+        with pytest.raises(GarminConnectConnectionError, match="403"):
+            garmin.get_daily_summary()
+
+    sentinel = tmp_path / garmin._RATE_LIMIT_SENTINEL
+    assert sentinel.exists()
+    assert float(sentinel.read_text().strip()) > garmin.time.time()
+
+
+def test_failed_login_401_does_not_persist_cooldown(monkeypatch, tmp_path):
+    monkeypatch.setenv("GARMIN_CONNECT_USERNAME", "user")
+    monkeypatch.setenv("GARMIN_CONNECT_PASSWORD", "pass")
+    monkeypatch.setattr(garmin, "SESSION_DIR", tmp_path)
+    monkeypatch.setattr(garmin, "RATE_LIMIT_COOLDOWN_SECONDS", 3600)
+    monkeypatch.setattr(garmin, "_client", None)
+    monkeypatch.setattr(garmin, "_auth_failed", None)
+
+    # A 401 can mean genuinely bad credentials rather than a block — do NOT lock
+    # the account out for a full cooldown on an ambiguous auth failure.
+    client = MagicMock()
+    client.login.side_effect = GarminConnectAuthenticationError(
+        "401 Unauthorized (Invalid Username or Password)"
+    )
+    with patch("nikitai.tools.garmin.Garmin", return_value=client):
+        with pytest.raises(GarminConnectAuthenticationError, match="401"):
+            garmin.get_daily_summary()
+
+    assert not (tmp_path / garmin._RATE_LIMIT_SENTINEL).exists()
+
+
 def test_unexpired_cooldown_fails_fast_without_network(monkeypatch, tmp_path):
     monkeypatch.setenv("GARMIN_CONNECT_USERNAME", "user")
     monkeypatch.setenv("GARMIN_CONNECT_PASSWORD", "pass")
@@ -134,9 +182,9 @@ def test_unexpired_cooldown_fails_fast_without_network(monkeypatch, tmp_path):
     # No Garmin client is ever constructed and no login attempted while the
     # cooldown is still active — the sentinel alone short-circuits.
     with patch("nikitai.tools.garmin.Garmin") as mock_garmin:
-        with pytest.raises(GarminConnectTooManyRequestsError, match="rate-limiting"):
+        with pytest.raises(GarminConnectTooManyRequestsError, match="blocking SSO logins"):
             garmin.get_daily_summary()
-        with pytest.raises(GarminConnectTooManyRequestsError, match="rate-limiting"):
+        with pytest.raises(GarminConnectTooManyRequestsError, match="blocking SSO logins"):
             garmin.get_recent_activities()
 
     mock_garmin.assert_not_called()
