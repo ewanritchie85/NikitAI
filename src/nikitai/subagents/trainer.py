@@ -38,7 +38,13 @@ e.g. recent activities together with recent sleep and body battery. Weigh traini
 against recovery signals (sleep, resting heart rate, body battery), notice trends and \
 patterns over time, and give concrete, personalized guidance grounded in the numbers you \
 actually fetched. If a data point is missing or a tool returns nothing useful, say so \
-honestly instead of guessing. Be concise, encouraging, and honest."""
+honestly instead of guessing.
+
+Answer succinctly first: lead with the verdict or key takeaway in a sentence or two, \
+with the most relevant number(s) to back it up. Keep the first reply tight — a short \
+paragraph at most. Only expand into deeper analysis, more numbers, or a full training \
+plan when the user explicitly asks for more detail or a follow-up. Be concise, \
+encouraging, and honest."""
 
 TRAINER_TOOL_DEFINITIONS: list[dict] = [
     {
