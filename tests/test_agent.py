@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import anthropic
 import pytest
 
 from nikitai import agent
@@ -48,6 +49,31 @@ def _tool_use_block(name: str, tool_id: str, tool_input: dict) -> MagicMock:
 
 def _response(content: list, stop_reason: str) -> MagicMock:
     return MagicMock(content=content, stop_reason=stop_reason)
+
+
+class _FakeStream:
+    """Stand-in for anthropic's MessageStream: iterable text deltas + final message."""
+
+    def __init__(self, chunks: list[str], message) -> None:
+        self._chunks = chunks
+        self._message = message
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args) -> None:
+        return None
+
+    @property
+    def text_stream(self):
+        yield from self._chunks
+
+    def get_final_message(self):
+        return self._message
+
+
+def _stream_response(chunks: list[str], content: list, stop_reason: str) -> _FakeStream:
+    return _FakeStream(chunks, _response(content, stop_reason))
 
 
 # ── model resolution ─────────────────────────────────────────────────────────
@@ -355,3 +381,125 @@ def test_agent_resolve_pending_reply_unknown_pending_returns_none(
 
     instance = _agent()
     assert instance.resolve_pending_reply("bogus-id", "yes") is None
+
+
+# ── stream_send / stream_confirm (progressive rendering) ─────────────────────
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_stream_send_yields_text_deltas_then_done(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    mock_client = MagicMock()
+    mock_client.messages.stream.return_value = _stream_response(
+        ["Hel", "lo ", "wor", "ld!"], [_text_block("Hello world!")], "end_turn"
+    )
+    mock_anthropic_cls.return_value = mock_client
+
+    events = list(_agent().stream_send("hello"))
+
+    # Each delta streamed as it arrives, followed by one terminal done event.
+    assert [k for k, _ in events[:-1]] == ["text", "text", "text", "text"]
+    assert [p for _, p in events[:-1]] == ["Hel", "lo ", "wor", "ld!"]
+    kind, payload = events[-1]
+    assert kind == "done"
+    assert payload.text == "Hello world!"
+    assert payload.pending is None and payload.error is None
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_stream_send_streams_across_tool_loop(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    dispatcher = MagicMock(return_value=("tool ran", None))
+    mock_client = MagicMock()
+    mock_client.messages.stream.side_effect = [
+        _stream_response(
+            ["Lets ", "check..."], [_tool_use_block(_FREE_TOOL, "tool_1", {"x": 1})], "tool_use"
+        ),
+        _stream_response(["Done."], [_text_block("Done.")], "end_turn"),
+    ]
+    mock_anthropic_cls.return_value = mock_client
+
+    events = list(_agent(dispatcher=dispatcher).stream_send("do the safe thing"))
+
+    texts = [p for k, p in events if k == "text"]
+    assert texts == ["Lets ", "check...", "Done."]
+    kind, payload = events[-1]
+    assert kind == "done"
+    assert payload.text == "Done."
+    dispatcher.assert_called_once_with(_FREE_TOOL, {"x": 1}, TOKEN)
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_stream_send_pauses_for_confirmation_then_streams_confirm(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    dispatcher = MagicMock(return_value=("executed", None))
+    tool_input = {"target": "prod"}
+    mock_client = MagicMock()
+    mock_client.messages.stream.side_effect = [
+        _stream_response(
+            ["Hold on..."], [_tool_use_block(_GATED_TOOL, "tool_1", tool_input)], "tool_use"
+        ),
+        _stream_response(["Done it!"], [_text_block("Done it!")], "end_turn"),
+    ]
+    mock_anthropic_cls.return_value = mock_client
+
+    instance = _agent(dispatcher=dispatcher)
+    events = list(instance.stream_send("do the dangerous thing"))
+    assert [k for k, _ in events] == ["text", "done"]
+    kind, first = events[-1]
+    assert kind == "done"
+    assert first.text == "Hold on..."
+    assert first.pending is not None
+    assert first.pending.tool_name == _GATED_TOOL
+
+    confirm_events = list(instance.stream_confirm(first.pending.id, approved=True))
+    assert [k for k, _ in confirm_events] == ["text", "done"]
+    kind, final = confirm_events[-1]
+    assert kind == "done"
+    assert final.text == "Done it!"
+    dispatcher.assert_called_once_with(_GATED_TOOL, tool_input, TOKEN)
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_stream_send_error_emits_done_with_error(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    mock_client = MagicMock()
+    mock_client.messages.stream.side_effect = anthropic.APIError(
+        "boom", request=MagicMock(), body=None
+    )
+    mock_anthropic_cls.return_value = mock_client
+
+    events = list(_agent().stream_send("hello"))
+
+    assert len(events) == 1
+    kind, payload = events[0]
+    assert kind == "done"
+    assert "boom" in payload.error
+
+
+@patch("nikitai.agent.get_access_token", return_value=TOKEN)
+@patch("nikitai.agent.anthropic.Anthropic")
+def test_agent_stream_confirm_unknown_id_emits_done_error(
+    mock_anthropic_cls, mock_get_token, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    mock_anthropic_cls.return_value = MagicMock()
+
+    events = list(_agent().stream_confirm("bogus-id", True))
+
+    assert len(events) == 1
+    kind, payload = events[0]
+    assert kind == "done"
+    assert payload.error == "Unknown confirmation id: 'bogus-id'"

@@ -385,3 +385,89 @@ def test_resolve_router_model_falls_back_to_hardcoded(monkeypatch):
     monkeypatch.delenv("NIKITAI_DEFAULT_MODEL", raising=False)
 
     assert orchestrator.resolve_router_model() == orchestrator.DEFAULT_ROUTER_MODEL
+
+
+# ── stream_send / stream_confirm (progressive rendering) ─────────────────────
+
+
+def test_stream_send_delegates_to_subagent_and_forwards_events(monkeypatch):
+    orch = _orchestrator(monkeypatch)
+    orch.client.messages.create.return_value = _router_response("organiser")
+
+    mock_agent = MagicMock()
+    mock_agent.stream_send.return_value = iter(
+        [
+            ("text", "Hel"),
+            ("text", "lo"),
+            ("done", AgentResponse(text="Hello")),
+        ]
+    )
+
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent):
+        events = list(orch.stream_send("hi"))
+
+    mock_agent.stream_send.assert_called_once_with("hi")
+    assert [k for k, _ in events] == ["text", "text", "done"]
+    assert [p for _, p in events[:2]] == ["Hel", "lo"]
+    assert events[-1][1].text == "Hello"
+
+
+def test_stream_send_unclear_with_no_last_active_yields_clarify_done(monkeypatch):
+    orch = _orchestrator(monkeypatch)
+    orch.client.messages.create.return_value = _router_response("unclear")
+
+    events = list(orch.stream_send("something vague"))
+
+    assert len(events) == 1
+    kind, payload = events[0]
+    assert kind == "done"
+    assert "NikitAI Organiser" in payload.text
+
+
+def test_stream_send_tracks_pending_from_done_event(monkeypatch):
+    orch = _orchestrator(monkeypatch)
+    orch.client.messages.create.return_value = _router_response("organiser")
+
+    pending = PendingConfirmation(id="p9", tool_name="send_email", tool_input={})
+    mock_agent = MagicMock()
+    mock_agent.stream_send.return_value = iter(
+        [
+            ("text", "Sure, emailing."),
+            ("done", AgentResponse(text="Sure, emailing.", pending=pending)),
+        ]
+    )
+
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent):
+        events = list(orch.stream_send("email bob"))
+
+    assert events[-1][1].pending is not None
+    assert orch._pending_routes.get("p9") == "organiser"
+
+
+def test_stream_confirm_forwards_events_and_clears_route(monkeypatch):
+    orch = _orchestrator(monkeypatch)
+    orch._pending_routes["p7"] = "organiser"
+
+    mock_agent = MagicMock()
+    mock_agent.stream_confirm.return_value = iter(
+        [("text", "Sen"), ("text", "t!"), ("done", AgentResponse(text="Sent!"))]
+    )
+
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent):
+        events = list(orch.stream_confirm("p7", True))
+
+    mock_agent.stream_confirm.assert_called_once_with("p7", True)
+    assert [k for k, _ in events] == ["text", "text", "done"]
+    assert events[-1][1].text == "Sent!"
+    assert orch._pending_routes.get("p7") is None
+
+
+def test_stream_confirm_unknown_id_yields_done_error(monkeypatch):
+    orch = _orchestrator(monkeypatch)
+
+    events = list(orch.stream_confirm("bogus", True))
+
+    assert len(events) == 1
+    kind, payload = events[0]
+    assert kind == "done"
+    assert payload.error == "Unknown confirmation id: 'bogus'"

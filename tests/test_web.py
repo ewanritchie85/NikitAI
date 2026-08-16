@@ -75,6 +75,20 @@ def test_script_adds_copy_button_to_code_blocks():
     assert 'messagesEl.addEventListener("click"' in script.text
 
 
+def test_script_consumes_sse_stream_incrementally():
+    client = _client_with_agent(MagicMock())
+
+    script = client.get("/static/script.js")
+
+    assert script.status_code == 200
+    # The UI reads the /message/stream and /confirm/stream SSE endpoints instead of
+    # waiting on a single JSON body, so text renders as it arrives.
+    assert 'fetch("/message/stream"' in script.text
+    assert 'fetch("/confirm/stream"' in script.text
+    assert "getReader()" in script.text
+    assert "handleStreamEvent(div, event, payload)" in script.text
+
+
 def test_message_returns_text_reply():
     mock_agent = MagicMock()
     mock_agent.send.return_value = AgentResponse(text="Hi there!")
@@ -156,3 +170,72 @@ def test_get_agent_lazily_creates_and_caches_orchestrator(monkeypatch):
 
     mock_orchestrator_cls.assert_called_once_with()
     assert first is second
+
+
+# ── streaming endpoints (SSE) ────────────────────────────────────────────────
+
+
+def test_message_stream_returns_sse_text_events_in_order():
+    mock_agent = MagicMock()
+    mock_agent.stream_send.return_value = iter(
+        [
+            ("text", "Hel"),
+            ("text", "lo!"),
+            ("done", AgentResponse(text="Hello!")),
+        ]
+    )
+    client = _client_with_agent(mock_agent)
+
+    response = client.post("/message/stream", json={"text": "hello"})
+
+    mock_agent.stream_send.assert_called_once_with("hello")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    body = response.text
+    assert 'event: text\ndata: {"delta": "Hel"}' in body
+    assert 'event: text\ndata: {"delta": "lo!"}' in body
+    assert "event: done" in body
+    assert '"text": "Hello!"' in body
+
+
+def test_message_stream_done_carries_pending_and_error_shape():
+    mock_agent = MagicMock()
+    pending = PendingConfirmation(id="p1", tool_name="send_email", tool_input={"to": "a@b.com"})
+    mock_agent.stream_send.return_value = iter(
+        [("done", AgentResponse(text="ok", pending=pending))]
+    )
+    client = _client_with_agent(mock_agent)
+
+    response = client.post("/message/stream", json={"text": "email bob"})
+
+    body = response.text
+    assert "event: done" in body
+    assert '"pending"' in body
+    assert '"tool_name": "send_email"' in body
+    assert '"id": "p1"' in body
+
+
+def test_message_stream_generator_error_emits_done_error_event():
+    mock_agent = MagicMock()
+    mock_agent.stream_send.return_value = iter(
+        [("text", "partial"), ("done", AgentResponse(error="boom"))]
+    )
+    client = _client_with_agent(mock_agent)
+
+    response = client.post("/message/stream", json={"text": "hello"})
+
+    assert '"error": "boom"' in response.text
+
+
+def test_confirm_stream_forwards_events():
+    mock_agent = MagicMock()
+    mock_agent.stream_confirm.return_value = iter(
+        [("text", "Sen"), ("text", "t!"), ("done", AgentResponse(text="Sent!"))]
+    )
+    client = _client_with_agent(mock_agent)
+
+    response = client.post("/confirm/stream", json={"pending_id": "p1", "approved": True})
+
+    mock_agent.stream_confirm.assert_called_once_with("p1", True)
+    assert 'event: text\ndata: {"delta": "Sen"}' in response.text
+    assert '"text": "Sent!"' in response.text

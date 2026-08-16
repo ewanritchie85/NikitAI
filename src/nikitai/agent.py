@@ -202,6 +202,67 @@ class Agent:
         self.messages.append({"role": "user", "content": user_text})
         return self._run_loop()
 
+    def stream_send(self, user_text: str):
+        """Stream a user turn, yielding ``(kind, payload)`` events.
+
+        Yields ``("text", chunk)`` for each text delta as it arrives, then a
+        single terminal ``("done", AgentResponse)``. Multi-turn tool loops
+        stream each assistant text block in turn, so a reply that narrates,
+        runs tools, and narrates again appears progressively. A terminal
+        ``done`` is always emitted (text, pending, or error) so callers can
+        finalize the UI deterministically.
+        """
+        self.messages.append({"role": "user", "content": user_text})
+        yield from self._stream_loop()
+
+    def stream_confirm(self, pending_id: str, approved: bool):
+        """Stream the follow-up to a confirmation, yielding the same event shape
+        as :meth:`stream_send`. The narration before the pending tool call was
+        already shown to the user, so only the post-approval turn is streamed.
+        """
+        pending = self._pending.pop(pending_id, None)
+        if pending is None:
+            yield "done", AgentResponse(error=f"Unknown confirmation id: {pending_id!r}")
+            return
+
+        if approved:
+            result_str, new_token = self.tool_dispatcher(
+                pending.tool_name, pending.tool_input, self.token
+            )
+            if new_token:
+                self.token = new_token
+        else:
+            result_str = "User declined to run this action."
+
+        results = [
+            *pending.completed_results,
+            {"type": "tool_result", "tool_use_id": pending.tool_use_id, "content": result_str},
+        ]
+
+        outcome = self._process_blocks(pending.remaining_blocks, pending.assistant_content, results)
+        if isinstance(outcome, PendingConfirmation):
+            yield "done", AgentResponse(pending=outcome)
+            return
+
+        self.messages.append({"role": "assistant", "content": pending.assistant_content})
+        self.messages.append({"role": "user", "content": outcome})
+        yield from self._stream_loop()
+
+    def stream_resolve_pending_reply(self, pending_id: str, user_text: str):
+        """Streaming variant of :meth:`resolve_pending_reply`.
+
+        Yields nothing when the message is not a confirmation reply (so the
+        caller falls through to normal classification), otherwise streams the
+        resolution exactly like :meth:`stream_confirm`.
+        """
+        if pending_id not in self._pending:
+            return
+        decision = classify_confirmation_reply(user_text)
+        if decision == "other":
+            self._pending.pop(pending_id, None)
+            return
+        yield from self.stream_confirm(pending_id, approved=(decision == "affirm"))
+
     def confirm(self, pending_id: str, approved: bool) -> AgentResponse:
         pending = self._pending.pop(pending_id, None)
         if pending is None:
@@ -281,6 +342,52 @@ class Agent:
                 continue  # loop back to let Claude process tool results
 
             return AgentResponse(text=assistant_text)
+
+    def _stream_loop(self):
+        """Streaming counterpart to :meth:`_run_loop`.
+
+        Yields ``("text", chunk)`` as each text delta arrives, and ends with a
+        single ``("done", AgentResponse)``. Tool-use iterations re-enter the
+        loop internally (tools run synchronously); only assistant *text* is
+        streamed out, so a long tool-bound turn never blocks the UI silently —
+        whatever text Claude emits before/after tool calls appears as it is
+        produced.
+        """
+        while True:
+            try:
+                with self.client.messages.stream(
+                    model=self.model,
+                    max_tokens=4096,
+                    system=self.system_prompt,
+                    tools=self.tools,
+                    messages=self.messages,
+                ) as stream:
+                    text_parts: list[str] = []
+                    for chunk in stream.text_stream:
+                        text_parts.append(chunk)
+                        yield "text", chunk
+                    response = stream.get_final_message()
+            except anthropic.APIError as exc:
+                yield "done", AgentResponse(error=str(exc))
+                return
+
+            tool_use_blocks = [block for block in response.content if block.type == "tool_use"]
+            outcome = self._process_blocks(tool_use_blocks, response.content, [])
+
+            assistant_text = "".join(text_parts)
+
+            if isinstance(outcome, PendingConfirmation):
+                yield "done", AgentResponse(text=assistant_text or None, pending=outcome)
+                return
+
+            self.messages.append({"role": "assistant", "content": response.content})
+
+            if response.stop_reason == "tool_use":
+                self.messages.append({"role": "user", "content": outcome})
+                continue
+
+            yield "done", AgentResponse(text=assistant_text)
+            return
 
     def _process_blocks(
         self,

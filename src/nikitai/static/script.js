@@ -142,23 +142,107 @@ function renderResponse(data) {
   }
 }
 
+function createStreamingMessage() {
+  // An empty assistant bubble that text deltas are appended into as they arrive.
+  const div = document.createElement("div");
+  div.className = "msg assistant streaming";
+  messagesEl.appendChild(div);
+  return div;
+}
+
+function updateStreamingMessage(div, text) {
+  // Plain-text fill while streaming (fast, no re-parse per delta); markdown is
+  // rendered once on the terminal "done" event.
+  div.textContent = text;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function finalizeStreamingMessage(div, text) {
+  const rendered = renderMarkdown(text);
+  div.innerHTML = rendered !== null ? rendered : text;
+  div.classList.remove("streaming");
+  if (rendered === null) div.textContent = text;
+  if (rendered !== null) addCopyButtons(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function handleStreamEvent(div, event, data) {
+  if (event === "text") {
+    div.dataset.streamText = (div.dataset.streamText || "") + data.delta;
+    updateStreamingMessage(div, div.dataset.streamText);
+  } else if (event === "done") {
+    const hadStreamed = Boolean(div.dataset.streamText);
+    const streamed = div.dataset.streamText || "";
+    if (hadStreamed) {
+      // Finalize whatever streamed, even if it ends in an error, so no half-filled
+      // bubble lingers (the "streaming" marker is removed either way).
+      delete div.dataset.streamText;
+      finalizeStreamingMessage(div, data.text || streamed);
+      if (data.error) {
+        appendMessage(data.error, "error");
+      }
+    } else if (data.text) {
+      appendMessage(data.text, "assistant");
+    } else if (data.error) {
+      appendMessage(data.error, "error");
+    }
+    if (data.pending) {
+      appendPending(data.pending);
+    }
+    if (!hadStreamed && !data.text && !data.error && !data.pending) {
+      div.remove();  // nothing to show — drop the empty streaming bubble
+    }
+  }
+}
+
+async function consumeStream(response, div) {
+  // Reads the SSE body incrementally (text/event-stream over fetch) so each
+  // text delta renders as it arrives instead of waiting for the full reply.
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary;
+    while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      let event = "message";
+      let data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event: ")) event = line.slice(7).trim();
+        else if (line.startsWith("data: ")) data += line.slice(6);
+      }
+      if (!data) continue;
+      let payload;
+      try {
+        payload = JSON.parse(data);
+      } catch (err) {
+        continue;
+      }
+      handleStreamEvent(div, event, payload);
+    }
+  }
+}
+
 async function resolvePending(pendingId, approved, container) {
   container.querySelectorAll("button").forEach((btn) => { btn.disabled = true; });
   container.remove();
-  showTypingIndicator();
+  const div = createStreamingMessage();
 
   try {
-    const res = await fetch("/confirm", {
+    const res = await fetch("/confirm/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pending_id: pendingId, approved: approved }),
     });
-    if (!res.ok) {
+    if (!res.ok || !res.body) {
       appendMessage("Something went wrong (" + res.status + "). Check the server logs.", "error");
       return;
     }
-    const data = await res.json();
-    renderResponse(data);
+    await consumeStream(res, div);
   } catch (err) {
     appendMessage("Something went wrong (" + err + "). Check the server logs.", "error");
   } finally {
@@ -175,19 +259,19 @@ async function sendMessage() {
   inputEl.disabled = true;
   sendButton.disabled = true;
   showTypingIndicator();
+  const div = createStreamingMessage();
 
   try {
-    const res = await fetch("/message", {
+    const res = await fetch("/message/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: text }),
     });
-    if (!res.ok) {
+    if (!res.ok || !res.body) {
       appendMessage("Something went wrong (" + res.status + "). Check the server logs.", "error");
       return;
     }
-    const data = await res.json();
-    renderResponse(data);
+    await consumeStream(res, div);
   } catch (err) {
     appendMessage("Something went wrong (" + err + "). Check the server logs.", "error");
   } finally {

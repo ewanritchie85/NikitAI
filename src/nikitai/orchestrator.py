@@ -193,6 +193,53 @@ class Orchestrator:
         self._track_pending(key, response)
         return response
 
+    def stream_send(self, user_text: str):
+        """Streaming counterpart to :meth:`send`, yielding ``(kind, payload)`` events.
+
+        Mirrors ``send()`` routing exactly (sticky-pending, classification,
+        last-active fallback) and then delegates to the sub-agent's
+        :meth:`~nikitai.agent.Agent.stream_send`, which emits ``("text", chunk)``
+        events followed by a terminal ``("done", AgentResponse)``.
+        """
+        active = self._active_pending()
+        if active is not None:
+            pending_id, key = active
+            response = self._get_agent(key).resolve_pending_reply(pending_id, user_text)
+            self._pending_routes.pop(pending_id, None)
+            if response is not None:
+                self._last_active_key = key
+                self._track_pending(key, response)
+                yield "done", response
+                return
+
+        key = self._classify(user_text)
+        if key not in self.registry:
+            if self._last_active_key is None:
+                yield "done", AgentResponse(text=self._clarify_text())
+                return
+            key = self._last_active_key
+
+        agent = self._get_agent(key)
+        self._last_active_key = key
+        for kind, payload in agent.stream_send(user_text):
+            if kind == "done":
+                self._track_pending(key, payload)
+            yield kind, payload
+
+    def stream_confirm(self, pending_id: str, approved: bool):
+        """Streaming counterpart to :meth:`confirm`."""
+        key = self._pending_routes.get(pending_id)
+        if key is None:
+            yield "done", AgentResponse(error=f"Unknown confirmation id: {pending_id!r}")
+            return
+
+        agent = self._get_agent(key)
+        for kind, payload in agent.stream_confirm(pending_id, approved):
+            if kind == "done":
+                self._pending_routes.pop(pending_id, None)
+                self._track_pending(key, payload)
+            yield kind, payload
+
     # ── Internals ────────────────────────────────────────────────────────────
 
     def _get_agent(self, key: str) -> Agent:
