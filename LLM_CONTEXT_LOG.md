@@ -185,6 +185,14 @@ Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
 
+### 2026-08-18 - Bump GitHub Actions to Node 24 majors
+- Scope: .github/workflows/ci.yml, LLM_CONTEXT_LOG.md
+- Summary: Bumped the Node-20 actions flagged by GitHub's deprecation warning to their Node-24-capable majors: actions/checkout@v4 → v5, actions/setup-python@v4 → v6, actions/upload-artifact@v4 → v6.
+- Why: GitHub is forcing actions off Node 20 (default Node 24 since 2026-06-16, Node 20 removed from runners 2026-09-16); the old pins logged a warning on every CI run.
+- Impact: CI warning gone; no behavior change to the check steps (python 3.12, make ci, coverage artifact inputs unchanged).
+- Validation: config reviewed after edit; workflow runs on next push.
+- Follow-ups: none.
+
 ### 2026-08-18 - Architecture page reflects the secure web login
 - Scope: docs/nikitai-architecture.html, LLM_CONTEXT_LOG.md
 - Summary: The architecture diagram now shows a "Login — single user · session cookie" box between "You" and the orchestrator, the orchestrator popup gained a "login-gated entry" tool line (argon2 password hash, signed session cookie), the Roadmap intro notes app login is shipped (with external access + voice still future), and the footer date bumped to 2026-08-18.
