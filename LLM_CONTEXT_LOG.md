@@ -185,6 +185,14 @@ Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
 
+### 2026-08-18 - Architecture page reflects the secure web login
+- Scope: docs/nikitai-architecture.html, LLM_CONTEXT_LOG.md
+- Summary: The architecture diagram now shows a "Login — single user · session cookie" box between "You" and the orchestrator, the orchestrator popup gained a "login-gated entry" tool line (argon2 password hash, signed session cookie), the Roadmap intro notes app login is shipped (with external access + voice still future), and the footer date bumped to 2026-08-18.
+- Why: the page documents the live build, which now includes the login gate.
+- Impact: docs only; no runtime behavior change.
+- Validation: inline script passes `node --check`; structural greps for the new box, modal line, roadmap note, and footer date all pass.
+- Follow-ups: none.
+
 ### 2026-08-18 - Login page reuses the shared stylesheet; /static served without auth
 - Scope: src/nikitai/web.py, src/nikitai/static/{login.html, style.css}, tests/test_web.py, README.md, LLM_CONTEXT_LOG.md
 - Summary: The login page previously carried its own inline CSS because /static was behind the auth gate. Made /static public (static assets hold no secrets; the gate still protects the chat APIs, index, and everything else) via _is_public() in web.py (allowlist of /login, /logout, and any /static prefix). login.html now links /static/style.css and the shared theme via new .login rules appended to style.css (label/input/button/error styling using the existing CSS variables); its small inline submit script is unchanged. The tiny inline JS remains page-local since the chat's script.js logic doesn't apply to the login form.

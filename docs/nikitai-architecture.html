@@ -349,6 +349,8 @@
     <div class="arch">
       <div class="arch-box"><div class="t">You</div></div>
       <div class="arch-line"></div>
+      <div class="arch-box"><div class="t">Login</div><div class="s">single user · session cookie</div></div>
+      <div class="arch-line"></div>
       <div class="arch-box amber clickable" data-agent="orchestrator" role="button" tabindex="0" aria-label="Show what the NikitAI orchestrator does"><div class="t">NikitAI</div><div class="s">routes each request</div></div>
       <div class="arch-line"></div>
       <div class="arch-row-wrap">
@@ -359,7 +361,7 @@
           <div class="arch-box planned more"><div class="t">+</div><div class="s">more, as needed</div></div>
         </div>
       </div>
-      <div class="arch-caption">click a box to see what it does · colour = built and live · dashed = open for what's next</div>
+      <div class="arch-caption">click a sub-agent to see what it can do</div>
     </div>
   </section>
 
@@ -373,9 +375,9 @@
       </thead>
       <tbody>
         <tr><td><span class="role">NikitAI Orchestrator</span></td><td><code>claude-haiku-4-5</code></td><td><span class="role">Cheap, fast — the task is just "which sub-agent?"</span></td></tr>
-        <tr><td><span class="role">Organiser</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Drafts email, resolves ambiguous phrasing</span></td></tr>
+        <tr><td><span class="role">Organiser</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Turns vague instructions into polished email drafts and precise tool calls</span></td></tr>
         <tr><td><span class="role">Platform Nerd</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Real reasoning over networking principles, not just file lookup</span></td></tr>
-        <tr><td><span class="role">Trainer</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Coaching judgment over training load, recovery, and trends from Garmin data</span></td></tr>
+        <tr><td><span class="role">Trainer</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Bespoke Health & fitness coaching grounded in your Garmin data</span></td></tr>
       </tbody>
     </table>
   </section>
@@ -383,15 +385,16 @@
   <section id="roadmap">
     <p class="eyebrow">cat todolist.md</p>
     <h2>Future Additions</h2>
+    <p class="intro">NikitAi's architecture allows for easy additions to sub-agents, tools and features.</p>
     <ul class="future-list">
-      <li>Secure external access via Raspberry Pi service</li>
+      <li>External access via Raspberry Pi service</li>
       <li>voice input / output</li>
     </ul>
   </section>
 
 <footer>
     built &amp; maintained by <a href="https://github.com/ewanritchie85/NikitAI" target="_blank" rel="noopener">github.com/ewanritchie85/NikitAI</a>
-    <span> · last updated 2026-08-16</span>
+    <span> · last updated 2026-08-18</span>
   </footer>
 
 </div>
@@ -414,6 +417,7 @@ var AGENTS = {
     desc: 'The single entry point. Every message hits the orchestrator first, which runs one cheap classification call to pick which sub-agent the request belongs to. It never guesses a domain — if the message isn\u2019t clearly for one, it asks you to clarify, and a \u201cyes\u201d to a pending approval gets routed straight back to the sub-agent it came from.',
     tools: [
       ['routes each message', '', 'one cheap, fast classification call picks the sub-agent'],
+      ['login-gated entry', '', 'web access needs a single-user sign-in — argon2 password hash, signed session cookie'],
       ['asks when unsure', '', 'falls back to \u201cwhich area does this relate to?\u201d rather than guessing'],
       ['sticky approvals', '', 'a reply while approval is pending goes straight back to the same sub-agent'],
       ['last-active fallback', '', 'off-topic chatter like a bare \u201cyes\u201d stays with the sub-agent you were just talking to'],
