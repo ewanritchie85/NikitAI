@@ -1,22 +1,145 @@
-"""Unit tests for nikitai.web."""
+"""Unit tests for nikitai.web (including the login/session gate)."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
-from nikitai import web
+from nikitai import web, web_auth
 from nikitai.agent import AgentResponse, PendingConfirmation
+
+TEST_USERNAME = "test-user"
+TEST_PASSWORD = "test-password"
+TEST_HASH = web_auth.hash_password(TEST_PASSWORD)
+
+
+@pytest.fixture(autouse=True)
+def _web_auth_env(monkeypatch):
+    monkeypatch.setenv("NIKITAI_WEB_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("NIKITAI_WEB_PASSWORD_HASH", TEST_HASH)
 
 
 def _client_with_agent(mock_agent) -> TestClient:
     web.app.dependency_overrides[web.get_agent] = lambda: mock_agent
-    return TestClient(web.app)
+    client = TestClient(web.app)
+    response = client.post("/login", json={"username": TEST_USERNAME, "password": TEST_PASSWORD})
+    assert response.status_code == 200, response.text
+    return client
 
 
 def teardown_function() -> None:
     web.app.dependency_overrides.clear()
+    web_auth._LOGIN_ATTEMPTS.clear()
+
+
+def test_unauthenticated_index_redirects_to_login():
+    client = TestClient(web.app)
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_unauthenticated_message_returns_401():
+    client = TestClient(web.app)
+
+    response = client.post("/message", json={"text": "hello"})
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Not authenticated"}
+
+
+def test_static_is_public():
+    client = TestClient(web.app)
+
+    response = client.get("/static/style.css")
+
+    assert response.status_code == 200
+    assert "text/css" in response.headers["content-type"]
+
+
+def test_login_page_is_public_and_uses_shared_stylesheet():
+    client = TestClient(web.app)
+
+    response = client.get("/login")
+
+    assert response.status_code == 200
+    assert "NikitAI" in response.text
+    assert 'id="login-form"' in response.text
+    assert 'href="/static/style.css"' in response.text
+    assert "cdn.jsdelivr.net" not in response.text
+
+
+def test_login_page_redirects_when_already_authenticated():
+    client = _client_with_agent(MagicMock())
+
+    response = client.get("/login", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
+def test_login_success_authenticates():
+    client = TestClient(web.app)
+
+    response = client.post("/login", json={"username": TEST_USERNAME, "password": TEST_PASSWORD})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert client.get("/").status_code == 200
+
+
+def test_login_wrong_credentials_fails_and_does_not_authenticate():
+    client = TestClient(web.app)
+
+    response = client.post("/login", json={"username": TEST_USERNAME, "password": "wrong"})
+
+    assert response.status_code == 401
+    assert client.get("/", follow_redirects=False).status_code == 303
+
+
+def test_login_wrong_username_fails():
+    client = TestClient(web.app)
+
+    response = client.post("/login", json={"username": "attacker", "password": TEST_PASSWORD})
+
+    assert response.status_code == 401
+
+
+def test_login_rejected_when_auth_not_configured(monkeypatch):
+    monkeypatch.delenv("NIKITAI_WEB_PASSWORD_HASH", raising=False)
+    client = TestClient(web.app)
+
+    response = client.post("/login", json={"username": TEST_USERNAME, "password": TEST_PASSWORD})
+
+    assert response.status_code == 403
+
+
+def test_login_rate_limited_after_max_attempts(monkeypatch):
+    monkeypatch.setattr(web_auth, "LOGIN_MAX_ATTEMPTS", 3)
+    client = TestClient(web.app)
+
+    for _ in range(3):
+        response = client.post("/login", json={"username": TEST_USERNAME, "password": "wrong"})
+        assert response.status_code == 401
+
+    blocked = client.post("/login", json={"username": TEST_USERNAME, "password": TEST_PASSWORD})
+
+    assert blocked.status_code == 429
+
+
+def test_logout_clears_session():
+    client = _client_with_agent(MagicMock())
+    assert client.get("/").status_code == 200
+
+    response = client.get("/logout", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+    assert client.get("/", follow_redirects=False).status_code == 303
 
 
 def test_index_serves_html():
@@ -38,6 +161,14 @@ def test_index_uses_vendored_markdown_libs():
     assert "/static/vendor/marked.min.js" in response.text
     assert "/static/vendor/purify.min.js" in response.text
     assert "cdn.jsdelivr.net" not in response.text
+
+
+def test_index_has_logout_link():
+    client = _client_with_agent(MagicMock())
+
+    response = client.get("/")
+
+    assert '<a class="logout-link" href="/logout">Log out</a>' in response.text
 
 
 def test_vendored_markdown_libs_are_served():
@@ -87,6 +218,15 @@ def test_script_consumes_sse_stream_incrementally():
     assert 'fetch("/confirm/stream"' in script.text
     assert "getReader()" in script.text
     assert "handleStreamEvent(div, event, payload)" in script.text
+
+
+def test_script_redirects_to_login_on_401():
+    client = _client_with_agent(MagicMock())
+
+    script = client.get("/static/script.js")
+
+    assert script.status_code == 200
+    assert 'window.location.href = "/login"' in script.text
 
 
 def test_message_returns_text_reply():

@@ -30,8 +30,8 @@ Sensitive actions always require explicit approval before anything happens.
 - The web UI streams replies as they're generated (SSE), so you don't wait for the
   full answer before text starts appearing.
 - Terminal CLI and a minimal local web UI are both available.
-- Web app auth, secure Pi hosting, and external access hardening are still on the
-  roadmap (see `todolist.md`).
+- Web app auth (single-user login, sessions, rate-limited login) is live; secure Pi
+  hosting and external access hardening are still on the roadmap (see `todolist.md`).
 
 ## Quickstart
 
@@ -98,6 +98,18 @@ Copy `.env.example` to `.env` and fill in:
   after a Garmin-side SSO block (HTTP 429 / Cloudflare 403 / CAPTCHA). Defaults to
   `86400` (24h — Garmin's observed block window, which every login attempt extends).
   Set to `0` to disable the persisted cooldown.
+- `NIKITAI_WEB_USERNAME` / `NIKITAI_WEB_PASSWORD_HASH` — required for the web UI.
+  The single allowed login. Generate the argon2id hash with
+  `python -m nikitai.web_auth "your-password"` (the plaintext password is never
+  stored). Without these the web UI fails closed: the login page is shown but no
+  credential can succeed.
+- `NIKITAI_WEB_SECRET` — optional. Secret signing the session cookie. When unset, a
+  random per-process secret is generated and every restart signs you out. Set it
+  (long random string) so sessions survive restarts.
+- `NIKITAI_WEB_SESSION_TTL` — optional. Session lifetime in seconds (default
+  `43200` = 12 hours).
+- `NIKITAI_WEB_HTTPS_ONLY` — optional. Set to `true` when serving over HTTPS so the
+  session cookie is `Secure`-only.
 
 ### 5. Run
 
@@ -126,8 +138,12 @@ make web
 
 (equivalent to `uvicorn nikitai.web:app --reload`)
 
-Then open http://127.0.0.1:8000 in your browser. It's a single-user, single-session
-tool with no auth — don't expose it beyond localhost. Replies stream in as they're
+Then open http://127.0.0.1:8000 in your browser. You'll be asked to sign in with the
+`NIKITAI_WEB_USERNAME` / `NIKITAI_WEB_PASSWORD_HASH` credentials (see step 4). It's a
+single-user, single-session tool; every route except `/login`, `/logout`, and the
+`/static` assets (shared CSS/JS) requires the session cookie, login attempts are
+rate-limited (5 per 15 minutes per IP), and sessions expire after
+`NIKITAI_WEB_SESSION_TTL`. Replies stream in as they're
 generated. Approval-required actions (sending email, deleting a mail folder, creating
 a calendar event) are still gated behind explicit Approve/Deny prompts.
 

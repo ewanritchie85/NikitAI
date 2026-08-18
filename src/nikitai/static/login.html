@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NikitAI — Sign in</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="login">
+  <h1>NikitAI</h1>
+  <p class="sub">Sign in</p>
+  <form id="login-form" novalidate>
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button id="submit" type="submit">Sign in</button>
+  </form>
+  <p class="error" id="error" role="alert" hidden></p>
+</main>
+<script>
+(function () {
+  var form = document.getElementById("login-form");
+  var errorEl = document.getElementById("error");
+  var submit = document.getElementById("submit");
+  var messages = {
+    401: "Invalid username or password.",
+    403: "Server authentication is not configured.",
+    429: "Too many failed attempts. Try again later."
+  };
+  form.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    errorEl.hidden = true;
+    submit.disabled = true;
+    try {
+      var res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: document.getElementById("username").value,
+          password: document.getElementById("password").value
+        })
+      });
+      if (res.ok) {
+        window.location.href = "/";
+        return;
+      }
+      errorEl.textContent = messages[res.status] || ("Sign-in failed (" + res.status + ").");
+      errorEl.hidden = false;
+    } catch (err) {
+      errorEl.textContent = "Network error. Try again.";
+      errorEl.hidden = false;
+    } finally {
+      submit.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -238,6 +238,10 @@ async function resolvePending(pendingId, approved, container) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pending_id: pendingId, approved: approved }),
     });
+    if (res.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
     if (!res.ok || !res.body) {
       appendMessage("Something went wrong (" + res.status + "). Check the server logs.", "error");
       return;
@@ -267,6 +271,10 @@ async function sendMessage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: text }),
     });
+    if (res.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
     if (!res.ok || !res.body) {
       appendMessage("Something went wrong (" + res.status + "). Check the server logs.", "error");
       return;

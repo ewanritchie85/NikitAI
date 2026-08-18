@@ -122,7 +122,7 @@ Design notes:
 - Graph delegated permissions include mail/calendar scopes; local token cache is used.
 - Platform Nerd file access is confined to NIKITAI_HOME_INFRA_NOTES_DIR: path traversal / absolute / symlink-escape rejected; append is pure-append to existing .txt files only (no create/overwrite/delete). append_to_log is confirmation-gated.
 - Trainer access to Garmin Connect is READ-ONLY (recent activities, activity details, daily summary, sleep, body battery) — no write-back to the account in v1 (no workout logging, no weigh-ins), and no confirmation-gated tools in this domain yet (confirmation_required_tools is empty, though the read-only design keeps escalation trivial for any future write tools). Credentials come from GARMIN_CONNECT_USERNAME/GARMIN_CONNECT_PASSWORD via an UNOFFICIAL client (garminconnect, Cyberjunky's) using real account credentials rather than OAuth — a dedicated, non-critical account is recommended; the token/session cache lives outside the repo at ~/.nikitai_garmin_session.
-- Current TODO indicates app-level auth for web access is still pending before external exposure.
+- The web UI is login-gated (single-user username + argon2id-hashed password via env vars NIKITAI_WEB_USERNAME/NIKITAI_WEB_PASSWORD_HASH). Every route except /login, /logout, and the /static assets (shared CSS/JS, no secrets) requires a signed HttpOnly session cookie; login attempts are rate-limited (5 per 15 min per IP, in-memory); sessions expire after NIKITAI_WEB_SESSION_TTL (default 12h); NIKITAI_WEB_SECRET signs cookies (random per-process when unset → sign-out on restart); NIKITAI_WEB_HTTPS_ONLY=true marks the cookie Secure-only behind TLS. Fails closed: with no hash configured the login page is shown but no credential can succeed.
 
 ## 5. Build, Test, and Quality Commands
 
@@ -142,7 +142,7 @@ Primary Make targets:
 ## 6. Active Priorities (From TODO)
 
 Highest-priority sequencing currently documented:
-1. App authentication for web access (login/session/logout/expiry)
+1. [DONE] App authentication for web access (login/session/logout/expiry) — see Safety + Auth Boundaries
 2. Secure hosting path on Raspberry Pi as a separate service
 3. Secure external access (TLS, reverse proxy, rate limiting, monitoring)
 
@@ -184,6 +184,22 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-18 - Login page reuses the shared stylesheet; /static served without auth
+- Scope: src/nikitai/web.py, src/nikitai/static/{login.html, style.css}, tests/test_web.py, README.md, LLM_CONTEXT_LOG.md
+- Summary: The login page previously carried its own inline CSS because /static was behind the auth gate. Made /static public (static assets hold no secrets; the gate still protects the chat APIs, index, and everything else) via _is_public() in web.py (allowlist of /login, /logout, and any /static prefix). login.html now links /static/style.css and the shared theme via new .login rules appended to style.css (label/input/button/error styling using the existing CSS variables); its small inline submit script is unchanged. The tiny inline JS remains page-local since the chat's script.js logic doesn't apply to the login form.
+- Why: avoid duplicating the theme and keep one stylesheet of record for the web UI.
+- Impact: unauthenticated users can fetch /static assets (CSS/JS/vendor libs — no secrets); all functional routes stay gated. Login page now matches the chat page theme exactly and updates with style.css.
+- Validation: `make test` → 195 passed (test_unauthenticated_static_redirects_to_login replaced by test_static_is_public asserting 200 + text/css; test_login_page_is_public_and_uses_shared_stylesheet asserts /static/style.css link and no CDN). `ruff check` + `ruff format --check` clean.
+- Follow-ups: none.
+
+### 2026-08-18 - Secure login for the web UI (single-user, fail-closed)
+- Scope: src/nikitai/web_auth.py (new), src/nikitai/web.py, src/nikitai/static/{login.html (new), index.html, style.css, script.js}, tests/test_web.py, requirements.txt, .env.example, README.md, LLM_CONTEXT_LOG.md
+- Summary: The web UI is now login-gated. web_auth.py owns config + hashing + rate limiting: env NIKITAI_WEB_USERNAME / NIKITAI_WEB_PASSWORD_HASH (argon2id, verified via argon2-cffi; plaintext never stored; hash generator CLI `python -m nikitai.web_auth <password>`), NIKITAI_WEB_SECRET (random per-process when unset), NIKITAI_WEB_SESSION_TTL (default 43200s), NIKITAI_WEB_HTTPS_ONLY. Fails closed: unset hash → login page shown but no credential succeeds (403). web.py adds Starlette SessionMiddleware (signed HttpOnly same_site=lax cookie, registered outermost) plus a `require_login` HTTP middleware gating everything except /login and /logout: unauthenticated POSTs (the /message, /confirm, and /stream APIs) get 401 JSON, unauthenticated GETs (/ and /static) 303-redirect to /login. New routes GET /login (self-contained inline-styled login.html, no /static/CDN dependency; redirects to / when already authed), POST /login (JSON, per-IP in-memory rate limit 5 fails/15min → 429, sets session on success), GET /logout (clears session, redirects to /login). index.html gains a Log out link; script.js 401-handles both stream fetches → window.location to /login. Requirements: argon2-cffi + itsdangerous added (Dockerfile inherits via requirements.txt).
+- Why: app-level auth was priority #1 before any external/Pi exposure; single user so one configured credential suffices; fail-closed keeps the hosting-readiness posture safe by default.
+- Impact: `make web` now requires login — users must set NIKITAI_WEB_USERNAME + NIKITAI_WEB_PASSWORD_HASH (generate via `python -m nikitai.web_auth`) or the app is unreachable-by-credential. Sessions expire, logout works, and brute-force is throttled. No change to CLI or sub-agent behavior.
+- Validation: `make test` → 195 passed (was 182; +13 web auth tests: unauth redirect/401 for /, /static, /message; public self-contained login page; wrong creds; wrong username; unconfigured 403; rate limit 429; logout; success sets session; login redirect when authed; index logout link; script 401 redirect). `ruff check` + `ruff format --check` clean; `node --check src/nikitai/static/script.js` clean.
+- Follow-ups: reverse-proxy note — trust X-Forwarded-For for rate limiting only behind a proxy you control; monitor failed-login attempts once hosted (todolist #3); NIKITAI_WEB_SECRET should be pinned for persistence when hosted.
 
 ### 2026-08-16 - README and context log refreshed to current state
 - Scope: README.md, LLM_CONTEXT_LOG.md

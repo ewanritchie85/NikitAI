@@ -1,20 +1,28 @@
 """Minimal local web UI for NikitAI, built on the Agent class.
 
 Run with: uvicorn nikitai.web:app --reload
+
+Every route except ``/login``, ``/logout``, and the ``/static`` assets is gated
+behind a session cookie; unauthenticated API calls get a 401 and unauthenticated
+page requests are redirected to ``/login``. See :mod:`nikitai.web_auth` for the
+single-user config.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.middleware.sessions import SessionMiddleware
 
+from . import web_auth
 from .agent import AgentResponse
 from .orchestrator import Orchestrator
 
@@ -28,6 +36,29 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 _orchestrator: Orchestrator | None = None
 
 
+def _is_public(path: str) -> bool:
+    return path in {"/login", "/logout"} or path.startswith("/static")
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    path = request.url.path
+    if _is_public(path) or web_auth.is_authenticated(request):
+        return await call_next(request)
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+    return RedirectResponse("/login", status_code=303)
+
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=web_auth.secret_key(),
+    max_age=web_auth.session_ttl(),
+    same_site="lax",
+    https_only=web_auth.https_only(),
+)
+
+
 def get_agent() -> Orchestrator:
     """Returns the single in-memory Orchestrator for this local, single-user session."""
     global _orchestrator
@@ -37,6 +68,11 @@ def get_agent() -> Orchestrator:
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
     return _orchestrator
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 
 class MessageRequest(BaseModel):
@@ -62,6 +98,36 @@ def _serialize(response: AgentResponse) -> dict[str, Any]:
             else None
         ),
     }
+
+
+@app.get("/login")
+def login_page(request: Request):
+    if web_auth.is_authenticated(request):
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(STATIC_DIR / "login.html")
+
+
+@app.post("/login")
+def login(request: Request, payload: LoginRequest) -> JSONResponse:
+    ip = request.client.host if request.client else "unknown"
+    if web_auth.login_blocked(ip):
+        raise HTTPException(status_code=429, detail="Too many failed login attempts")
+    if not web_auth.is_configured():
+        raise HTTPException(status_code=403, detail="Server authentication is not configured")
+    if payload.username != web_auth.username() or not web_auth.verify_password(payload.password):
+        web_auth.record_failed_login(ip)
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    web_auth.clear_failed_logins(ip)
+    request.session["authenticated"] = True
+    request.session["username"] = payload.username
+    request.session["expires"] = time.time() + web_auth.session_ttl()
+    return JSONResponse({"ok": True})
+
+
+@app.get("/logout")
+def logout(request: Request) -> RedirectResponse:
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
 
 
 @app.get("/")
