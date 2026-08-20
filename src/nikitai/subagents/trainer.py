@@ -31,6 +31,8 @@ You have read-only access to the user's Garmin data through your tools:
 - get_daily_summary: daily steps, calories, resting heart rate, and other stats for a date.
 - get_sleep_data: sleep stages and duration for a date.
 - get_body_battery: Garmin's body battery / energy metric for a date.
+- get_profile: the user's static profile — height, weight, gender, birth date.
+- get_body_composition: weight, body fat, muscle, and bone for a date.
 
 When the user asks how they're doing, how their training is going, or what they should do \
 next, pull the relevant recent data before answering rather than answering generically — \
@@ -130,6 +132,32 @@ TRAINER_TOOL_DEFINITIONS: list[dict] = [
             },
         },
     },
+    {
+        "name": "get_profile",
+        "description": (
+            "Return the user's static profile: height, weight, gender, and birth date "
+            "from Garmin. Use this for body context whenever a goal or question depends "
+            "on who they are (weight targets, BMI-adjacent reasoning, body-type advice)."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_body_composition",
+        "description": (
+            "Return body composition (weight, body fat, muscle, bone) for a date. "
+            "Defaults to today. Use this with get_profile to weigh weight or body-fat "
+            "changes over time."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": "Date in YYYY-MM-DD format. Defaults to today.",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -151,6 +179,10 @@ def _execute_trainer_tool(name: str, inputs: dict[str, Any], token: str) -> tupl
             result = garmin.get_sleep_data(**inputs)
         elif name == "get_body_battery":
             result = garmin.get_body_battery(**inputs)
+        elif name == "get_profile":
+            result = garmin.get_profile()
+        elif name == "get_body_composition":
+            result = garmin.get_body_composition(**inputs)
         else:
             return f"Unknown tool: {name}", None
     except Exception as exc:  # noqa: BLE001

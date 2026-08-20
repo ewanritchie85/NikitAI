@@ -279,6 +279,61 @@ def test_get_daily_summary_defaults_to_today(monkeypatch):
     assert result == {"steps": 8000}
 
 
+def test_get_profile_condenses_relevant_fields(monkeypatch):
+    client = MagicMock()
+    client.get_user_profile.return_value = {
+        "height": 1.83,
+        "weight": 80.5,
+        "gender": "MALE",
+        "birthDate": "1990-01-01",
+        "unitSystem": "metric",
+        "firstName": "Ewan",
+        "displayName": "Ewan",
+    }
+    with patch.object(garmin, "_get_client", return_value=client):
+        result = garmin.get_profile()
+
+    client.get_user_profile.assert_called_once_with()
+    assert result == {
+        "height": 1.83,
+        "weight": 80.5,
+        "gender": "MALE",
+        "birth_date": "1990-01-01",
+        "unit_system": "metric",
+    }
+
+
+def test_get_profile_omits_missing_fields_and_non_dict(monkeypatch):
+    client = MagicMock()
+    client.get_user_profile.return_value = {"height": 1.8, "unitOfMeasure": "statute"}
+    with patch.object(garmin, "_get_client", return_value=client):
+        assert garmin.get_profile() == {"height": 1.8, "unit_of_measure": "statute"}
+
+    client.get_user_profile.return_value = None
+    with patch.object(garmin, "_get_client", return_value=client):
+        assert garmin.get_profile() == {}
+
+
+def test_get_body_composition_defaults_to_today(monkeypatch):
+    client = MagicMock()
+    client.get_body_composition.return_value = {"dateWeight": 80.5, "totalWeight": 80.5}
+    with patch.object(garmin, "_get_client", return_value=client):
+        result = garmin.get_body_composition()
+
+    client.get_body_composition.assert_called_once_with(TODAY)
+    assert result["dateWeight"] == 80.5
+
+
+def test_get_body_composition_passes_explicit_date(monkeypatch):
+    client = MagicMock()
+    client.get_body_composition.return_value = {"dateWeight": 79.0}
+    with patch.object(garmin, "_get_client", return_value=client):
+        result = garmin.get_body_composition("2026-08-01")
+
+    client.get_body_composition.assert_called_once_with("2026-08-01")
+    assert result == {"dateWeight": 79.0}
+
+
 def test_get_sleep_data_passes_explicit_date(monkeypatch):
     client = MagicMock()
     client.get_sleep_data.return_value = {"sleepTimeInSeconds": 28800}

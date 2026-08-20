@@ -255,6 +255,36 @@ def get_daily_summary(date: str | None = None) -> dict:
     return _get_client().get_stats(_date_arg(date))
 
 
+def get_profile() -> dict:
+    """Return the user's static profile, condensed to coach-relevant fields.
+
+    Includes height, weight, gender, and birth date (plus unit system when the
+    API provides it). Missing fields are simply omitted, and a non-dict response
+    degrades to an empty dict so the model never receives a malformed payload.
+    """
+    profile = _get_client().get_user_profile()
+    if not isinstance(profile, dict):
+        return {}
+    fields = {
+        "height": "height",
+        "weight": "weight",
+        "gender": "gender",
+        "birthDate": "birth_date",
+        "unitSystem": "unit_system",
+        "unitOfMeasure": "unit_of_measure",
+    }
+    return {
+        target: profile[source]
+        for source, target in fields.items()
+        if profile.get(source) is not None
+    }
+
+
+def get_body_composition(date: str | None = None) -> dict:
+    """Return body composition (weight, body fat, muscle, bone) for ``date``."""
+    return _get_client().get_body_composition(_date_arg(date))
+
+
 def get_sleep_data(date: str | None = None) -> dict:
     """Return sleep stages and duration for ``date``."""
     return _get_client().get_sleep_data(_date_arg(date))

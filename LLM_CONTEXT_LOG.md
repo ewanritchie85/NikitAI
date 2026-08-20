@@ -26,7 +26,7 @@ Core capabilities currently in repo:
 - Create calendar events (approval-gated)
 - Manage mail folders (list/create/delete; destructive actions are gated)
 - Fitness training coach over read-only Garmin data (activities, daily summary,
-  sleep, body battery) — no write-back to Garmin yet
+  sleep, body battery, profile, body composition) — no write-back to Garmin yet
 - Web UI + CLI interfaces over shared agent logic
 
 ## 3. Architecture At A Glance
@@ -121,7 +121,7 @@ Design notes:
 - Approval gates are expected for high-impact actions (for example sending mail, deleting folders, creating events, appending to infra notes).
 - Graph delegated permissions include mail/calendar scopes; local token cache is used.
 - Platform Nerd file access is confined to NIKITAI_HOME_INFRA_NOTES_DIR: path traversal / absolute / symlink-escape rejected; append is pure-append to existing .txt files only (no create/overwrite/delete). append_to_log is confirmation-gated.
-- Trainer access to Garmin Connect is READ-ONLY (recent activities, activity details, daily summary, sleep, body battery) — no write-back to the account in v1 (no workout logging, no weigh-ins), and no confirmation-gated tools in this domain yet (confirmation_required_tools is empty, though the read-only design keeps escalation trivial for any future write tools). Credentials come from GARMIN_CONNECT_USERNAME/GARMIN_CONNECT_PASSWORD via an UNOFFICIAL client (garminconnect, Cyberjunky's) using real account credentials rather than OAuth — a dedicated, non-critical account is recommended; the token/session cache lives outside the repo at ~/.nikitai_garmin_session.
+- Trainer access to Garmin Connect is READ-ONLY (recent activities, activity details, daily summary, sleep, body battery, profile, body composition) — no write-back to the account in v1 (no workout logging, no weigh-ins), and no confirmation-gated tools in this domain yet (confirmation_required_tools is empty, though the read-only design keeps escalation trivial for any future write tools). Credentials come from GARMIN_CONNECT_USERNAME/GARMIN_CONNECT_PASSWORD via an UNOFFICIAL client (garminconnect, Cyberjunky's) using real account credentials rather than OAuth — a dedicated, non-critical account is recommended; the token/session cache lives outside the repo at ~/.nikitai_garmin_session.
 - The web UI is login-gated (single-user username + argon2id-hashed password via env vars NIKITAI_WEB_USERNAME/NIKITAI_WEB_PASSWORD_HASH). Every route except /login, /logout, and the /static assets (shared CSS/JS, no secrets) requires a signed HttpOnly session cookie; login attempts are rate-limited (5 per 15 min per IP, in-memory); sessions expire after NIKITAI_WEB_SESSION_TTL (default 12h); NIKITAI_WEB_SECRET signs cookies (random per-process when unset → sign-out on restart); NIKITAI_WEB_HTTPS_ONLY=true marks the cookie Secure-only behind TLS. Fails closed: with no hash configured the login page is shown but no credential can succeed.
 
 ## 5. Build, Test, and Quality Commands
@@ -184,6 +184,14 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-18 - Trainer gains profile + body-composition tools
+- Scope: src/nikitai/tools/garmin.py, src/nikitai/subagents/trainer.py, tests/{test_garmin,test_trainer}.py, docs/nikitai-architecture.html, README.md, LLM_CONTEXT_LOG.md
+- Summary: Added two read-only Garmin tools so the Trainer has body context (it previously had no knowledge of height/weight). tools/garmin.py: get_profile() condenses Garmin.get_user_profile() to height/weight/gender/birth_date (+ unit system when present; non-dict → {}), and get_body_composition(date) wraps Garmin.get_body_composition(startdate) with a single date defaulting to today. trainer.py: both registered in TRAINER_TOOL_DEFINITIONS, dispatched in _execute_trainer_tool, and listed in the system prompt. confirmation_required_tools stays empty (still fully read-only).
+- Why: the coach was reasoning about training load, recovery, and goals without knowing the user's height/weight — a gap for weight targets / body-type advice.
+- Impact: Trainer can now pull static profile data and per-date weight/body-fat/muscle/bone. No write-back; no config change.
+- Validation: `make test` → 199 passed (was 195; +4: profile condense, profile omits missing/non-dict, body-composition today + explicit date; +2 trainer dispatcher tests; config-shape test tool set extended). `ruff check` + `ruff format --check` clean. docs greps updated; inline architecture script `node --check` clean.
+- Follow-ups: none. (Raw weigh-in endpoints deliberately skipped — get_body_composition already includes weight.)
 
 ### 2026-08-18 - Bump GitHub Actions to Node 24 majors
 - Scope: .github/workflows/ci.yml, LLM_CONTEXT_LOG.md

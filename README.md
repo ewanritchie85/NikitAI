@@ -10,7 +10,8 @@ sub-agent:
 - **NikitAI Platform Nerd** — home network / self-hosting / Raspberry Pi advisor,
   grounded in your own local notes files (read + confirmation-gated append).
 - **NikitAI Trainer** — fitness and training coach over read-only Garmin Connect
-  data (activities, daily summary, sleep, body battery). No write-back to Garmin.
+  data (activities, daily summary, sleep, body battery, profile, body composition).
+  No write-back to Garmin.
 
 All three sub-agents answer succinctly first and expand only when you ask for more
 detail.

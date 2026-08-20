@@ -34,6 +34,8 @@ def test_trainer_config_shape(monkeypatch):
         "get_daily_summary",
         "get_sleep_data",
         "get_body_battery",
+        "get_profile",
+        "get_body_composition",
     }
     assert "NikitAI Trainer" in config["system_prompt"]
 
@@ -101,6 +103,32 @@ def test_execute_trainer_body_battery_json():
         result, refreshed = trainer._execute_trainer_tool("get_body_battery", {}, TOKEN)
 
     assert '"bodyBatteryValues": []' in result
+    assert refreshed is None
+
+
+def test_execute_trainer_profile_json():
+    with patch(
+        "nikitai.subagents.trainer.garmin.get_profile",
+        return_value={"height": 1.83, "weight": 80.5},
+    ) as mock_profile:
+        result, refreshed = trainer._execute_trainer_tool("get_profile", {}, TOKEN)
+
+    mock_profile.assert_called_once_with()
+    assert '"height": 1.83' in result
+    assert refreshed is None
+
+
+def test_execute_trainer_body_composition_passes_date():
+    with patch(
+        "nikitai.subagents.trainer.garmin.get_body_composition",
+        return_value={"dateWeight": 79.0},
+    ) as mock_comp:
+        result, refreshed = trainer._execute_trainer_tool(
+            "get_body_composition", {"date": "2026-08-01"}, TOKEN
+        )
+
+    mock_comp.assert_called_once_with(date="2026-08-01")
+    assert '"dateWeight": 79.0' in result
     assert refreshed is None
 
 
