@@ -25,6 +25,8 @@
     --teal-dim: #229488;
     --green: #4ade80;
     --green-dim: #3a9d5f;
+    --cyan: #22d3ee;
+    --cyan-dim: #1a9cb5;
     --gray: #7a7867;
     --danger: #ff6b5e;
     --mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -172,6 +174,8 @@
   .arch-row .arch-box.teal .t { color: var(--teal); }
   .arch-row .arch-box.green { border-color: rgba(74,222,128,0.4); }
   .arch-row .arch-box.green .t { color: var(--green); }
+  .arch-row .arch-box.cyan { border-color: rgba(34,211,238,0.4); }
+  .arch-row .arch-box.cyan .t { color: var(--cyan); }
   .arch-row .arch-box.planned { border-style: dashed; opacity: 0.75; }
   .arch-row .arch-box.more { opacity: 0.55; display: flex; flex-direction: column; justify-content: center; }
   .arch-row .arch-box.more .t { font-size: 20px; color: var(--text-faint); line-height: 1; }
@@ -221,6 +225,7 @@
   .modal.organiser { border-top-color: var(--purple); }
   .modal.platform_nerd { border-top-color: var(--teal); }
   .modal.trainer { border-top-color: var(--green); }
+  .modal.home_wizard { border-top-color: var(--cyan); }
   .modal.orchestrator { border-top-color: var(--amber); }
   .modal-close {
     position: absolute;
@@ -247,6 +252,7 @@
   .modal.organiser .name { color: var(--purple); }
   .modal.platform_nerd .name { color: var(--teal); }
   .modal.trainer .name { color: var(--green); }
+  .modal.home_wizard .name { color: var(--cyan); }
   .modal.orchestrator .name { color: var(--amber); }
   .modal .domain {
     font-family: var(--mono);
@@ -353,13 +359,15 @@
       <div class="arch-line"></div>
       <div class="arch-box amber clickable" data-agent="orchestrator" role="button" tabindex="0" aria-label="Show what the NikitAI orchestrator does"><div class="t">NikitAI</div><div class="s">routes each request</div></div>
       <div class="arch-line"></div>
-      <div class="arch-row-wrap">
+<div class="arch-row-wrap">
         <div class="arch-row">
-          <div class="arch-box purple clickable" data-agent="organiser" role="button" tabindex="0" aria-label="Show the Organiser sub-agent"><div class="t">Organiser</div><div class="s">email &amp; calendar</div></div>
-          <div class="arch-box teal clickable" data-agent="platform_nerd" role="button" tabindex="0" aria-label="Show the Platform Nerd sub-agent"><div class="t">Platform Nerd</div><div class="s">network &amp; hosting</div></div>
-          <div class="arch-box green clickable" data-agent="trainer" role="button" tabindex="0" aria-label="Show the Trainer sub-agent"><div class="t">Trainer</div><div class="s">Garmin — health &amp; fitness</div></div>
+          <div class="arch-box purple clickable" data-agent="organiser" role="button" tabindex="0" aria-label="Show the Organiser sub-agent"><div class="t">Organiser</div><div class="s">email & calendar</div></div>
+          <div class="arch-box teal clickable" data-agent="platform_nerd" role="button" tabindex="0" aria-label="Show the Platform Nerd sub-agent"><div class="t">Platform Nerd</div><div class="s">network & hosting</div></div>
+          <div class="arch-box green clickable" data-agent="trainer" role="button" tabindex="0" aria-label="Show the Trainer sub-agent"><div class="t">Trainer</div><div class="s">Garmin — health & fitness</div></div>
+          <div class="arch-box cyan clickable" data-agent="home_wizard" role="button" tabindex="0" aria-label="Show the Home Wizard sub-agent"><div class="t">Home Wizard</div><div class="s">smart home — lighting</div></div>
           <div class="arch-box planned more"><div class="t">+</div><div class="s">more, as needed</div></div>
         </div>
+      </div>
       </div>
       <div class="arch-caption">click a sub-agent to see what it can do</div>
     </div>
@@ -373,11 +381,12 @@
       <thead>
         <tr><th>Purpose</th><th>Model</th><th>Why</th></tr>
       </thead>
-      <tbody>
+<tbody>
         <tr><td><span class="role">NikitAI Orchestrator</span></td><td><code>claude-haiku-4-5</code></td><td><span class="role">Cheap, fast — the task is just "which sub-agent?"</span></td></tr>
         <tr><td><span class="role">Organiser</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Turns vague instructions into polished email drafts and precise tool calls</span></td></tr>
         <tr><td><span class="role">Platform Nerd</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Real reasoning over networking principles, not just file lookup</span></td></tr>
-        <tr><td><span class="role">Trainer</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Bespoke Health & fitness coaching grounded in your Garmin data</span></td></tr>
+        <tr><td><span class="role">Trainer</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Bespoke health & fitness coaching grounded in your Garmin data</span></td></tr>
+        <tr><td><span class="role">Home Wizard</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Local smart home control (WiZ lighting over UDP, no cloud)</span></td></tr>
       </tbody>
     </table>
   </section>
@@ -393,8 +402,8 @@
   </section>
 
 <footer>
-    built &amp; maintained by <a href="https://github.com/ewanritchie85/NikitAI" target="_blank" rel="noopener">github.com/ewanritchie85/NikitAI</a>
-    <span> · last updated 2026-08-18</span>
+    built & maintained by <a href="https://github.com/ewanritchie85/NikitAI" target="_blank" rel="noopener">github.com/ewanritchie85/NikitAI</a>
+    <span> · last updated 2026-08-24</span>
   </footer>
 
 </div>
@@ -449,19 +458,33 @@ var AGENTS = {
       ['append_to_log', 'requires approval', "append-only — can't overwrite or create new files"]
     ]
   },
-  trainer: {
+trainer: {
     name: 'Trainer',
-    domain: 'Garmin — health &amp; fitness',
+    domain: 'Garmin — health & fitness',
     model: 'claude-sonnet-5',
     desc: 'Acts as a knowledgeable fitness and training coach. Reasons about training load, recovery, and trends over time from your own Garmin Connect data — weighing recent workouts against sleep and body battery before suggesting what to do next, rather than reciting numbers back.',
     tools: [
       ['get_recent_activities, get_activity_details', '', 'your workouts — type, date, duration, distance, key stats'],
       ['get_daily_summary', '', 'steps, calories, resting heart rate'],
-      ['get_sleep_data', '', 'sleep stages &amp; duration'],
+      ['get_sleep_data', '', 'sleep stages & duration'],
       ['get_body_battery', '', 'energy / recovery signal'],
       ['get_profile', '', 'height, weight, gender, birth date'],
       ['get_body_composition', '', 'weight, body fat, muscle, bone'],
       ['', '', 'read-only — nothing requires approval, nothing is written back to Garmin']
+    ]
+  },
+  home_wizard: {
+    name: 'Home Wizard',
+    domain: 'Smart home — WiZ lighting',
+    model: 'claude-sonnet-5',
+    desc: 'Direct local control of WiZ smart bulbs over UDP — no cloud, no accounts, just LAN. Turn lights on/off, dim, set colours. Calls list_lights when unsure what is available; asks for clarification if a light name is unknown or ambiguous.',
+    tools: [
+      ['list_lights', '', 'friendly names from your local JSON config file'],
+      ['get_light_state', '', 'on/off, brightness (0-100), RGB colour'],
+      ['turn_on', '', 'turn on, optional brightness & RGB in same call'],
+      ['turn_off', '', 'turn off'],
+      ['set_brightness', '', 'adjust brightness 0-100 while keeping on'],
+      ['', '', 'nothing requires approval — all lighting actions run immediately']
     ]
   }
 };
