@@ -373,32 +373,36 @@
     </div>
   </section>
 
-  <section id="models">
+<section id="models">
     <p class="eyebrow">nikitai --show-config</p>
     <h2>Models</h2>
     <p class="intro">Routing never needs to think hard — it just picks a sub-agent — so it gets a cheap, fast model. The sub-agents do the real reasoning, and each one's model is tuned to how demanding its role is.</p>
-    <table>
-      <thead>
-        <tr><th>Purpose</th><th>Model</th><th>Why</th></tr>
-      </thead>
-<tbody>
+    <div class="arch-row-wrap" style="max-width: 780px; margin: 0 auto;">
+      <table>
+        <thead>
+          <tr><th>Purpose</th><th>Model</th><th>Why</th></tr>
+        </thead>
+      <tbody>
         <tr><td><span class="role">NikitAI Orchestrator</span></td><td><code>claude-haiku-4-5</code></td><td><span class="role">Cheap, fast — the task is just "which sub-agent?"</span></td></tr>
         <tr><td><span class="role">Organiser</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Turns vague instructions into polished email drafts and precise tool calls</span></td></tr>
         <tr><td><span class="role">Platform Nerd</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Real reasoning over networking principles, not just file lookup</span></td></tr>
         <tr><td><span class="role">Trainer</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Bespoke health & fitness coaching grounded in your Garmin data</span></td></tr>
         <tr><td><span class="role">Home Wizard</span></td><td><code>claude-haiku-4-5</code></td><td><span class="role">Local smart home control (WiZ lighting over UDP, no cloud)</span></td></tr>
       </tbody>
-    </table>
+      </table>
+    </div>
   </section>
 
   <section id="roadmap">
     <p class="eyebrow">cat todolist.md</p>
     <h2>Future Additions</h2>
     <p class="intro">NikitAi's architecture allows for easy additions to sub-agents, tools and features.</p>
-    <ul class="future-list">
-      <li>External access via Raspberry Pi service</li>
-      <li>voice input / output</li>
-    </ul>
+    <div class="arch-row-wrap" style="max-width: 780px; margin: 0 auto;">
+      <ul class="future-list">
+        <li>External access via Raspberry Pi service</li>
+        <li>voice input / output</li>
+      </ul>
+    </div>
   </section>
 
 <footer>
@@ -477,7 +481,7 @@ trainer: {
     name: 'Home Wizard',
     domain: 'Smart home — WiZ lighting',
     model: 'claude-haiku-4-5',
-    desc: 'Direct local control of WiZ smart bulbs over UDP — no cloud, no accounts, just LAN. Turn lights on/off, dim, set colours. Calls list_lights when unsure what is available; asks for clarification if a light name is unknown or ambiguous.',
+    desc: 'Direct local control of WiZ smart bulbs over UDP — no cloud, no accounts, just LAN. Turn lights on/off, dim, set colours. Potential expansion to Spotify control, thermostat etc.',
     tools: [
       ['list_lights', '', 'friendly names from your local JSON config file'],
       ['get_light_state', '', 'on/off, brightness (0-100), RGB colour'],
