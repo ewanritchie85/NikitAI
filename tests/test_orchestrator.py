@@ -9,6 +9,7 @@ import pytest
 from nikitai import orchestrator
 from nikitai.agent import AgentResponse, PendingConfirmation
 from nikitai.orchestrator import Orchestrator, SubAgentSpec
+from nikitai.subagents.home_wizard import home_wizard_agent_config
 from nikitai.subagents.organiser import outlook_agent_config
 from nikitai.subagents.platform_nerd import platform_nerd_agent_config
 from nikitai.subagents.trainer import trainer_agent_config
@@ -119,7 +120,8 @@ def test_send_routes_infra_message_to_platform_nerd(monkeypatch):
 
 
 def test_default_registry_includes_platform_nerd():
-    assert set(orchestrator.SUB_AGENT_REGISTRY) == {"organiser", "platform_nerd", "trainer"}
+    expected = {"organiser", "platform_nerd", "trainer", "home_wizard"}
+    assert set(orchestrator.SUB_AGENT_REGISTRY) == expected
     spec = orchestrator.SUB_AGENT_REGISTRY["platform_nerd"]
     assert spec.display_name == "NikitAI Platform Nerd"
     assert spec.config_factory is platform_nerd_agent_config
@@ -129,6 +131,57 @@ def test_default_registry_includes_trainer():
     spec = orchestrator.SUB_AGENT_REGISTRY["trainer"]
     assert spec.display_name == "NikitAI Trainer"
     assert spec.config_factory is trainer_agent_config
+
+
+def test_default_registry_includes_home_wizard():
+    spec = orchestrator.SUB_AGENT_REGISTRY["home_wizard"]
+    assert spec.display_name == "NikitAI Home Wizard"
+    assert spec.config_factory is home_wizard_agent_config
+    assert "lighting" in spec.description.lower()
+
+
+def test_send_routes_lighting_message_to_home_wizard(monkeypatch):
+    orch = _orchestrator(monkeypatch, registry=_four_key_registry())
+    orch.client.messages.create.return_value = _router_response("home_wizard")
+
+    mock_agent = MagicMock()
+    mock_agent.send.return_value = AgentResponse(text="Turned on the bedroom lamp.")
+
+    with patch("nikitai.orchestrator.Agent", return_value=mock_agent) as mock_agent_cls:
+        result = orch.send("turn on the bedroom lamp")
+
+    assert mock_agent_cls.call_args.kwargs == {"who": "home_wizard"}
+    mock_agent.send.assert_called_once_with("turn on the bedroom lamp")
+    assert result.text == "Turned on the bedroom lamp."
+
+
+def _four_key_registry() -> dict[str, SubAgentSpec]:
+    return {
+        "organiser": SubAgentSpec(
+            key="organiser",
+            display_name="NikitAI Organiser",
+            description="Outlook email and calendar.",
+            config_factory=lambda: {"who": "organiser"},
+        ),
+        "platform_nerd": SubAgentSpec(
+            key="platform_nerd",
+            display_name="NikitAI Platform Nerd",
+            description="Home network, self-hosting, Raspberry Pi, networking.",
+            config_factory=lambda: {"who": "platform_nerd"},
+        ),
+        "trainer": SubAgentSpec(
+            key="trainer",
+            display_name="NikitAI Trainer",
+            description="Fitness, workouts, sleep, recovery, health.",
+            config_factory=lambda: {"who": "trainer"},
+        ),
+        "home_wizard": SubAgentSpec(
+            key="home_wizard",
+            display_name="NikitAI Home Wizard",
+            description="Smart home automation — currently lighting control.",
+            config_factory=lambda: {"who": "home_wizard"},
+        ),
+    }
 
 
 def test_send_routes_fitness_message_to_trainer(monkeypatch):

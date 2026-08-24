@@ -182,6 +182,45 @@ Safety notes
   block. Tokens/session cache live outside the repo at `~/.nikitai_garmin_session`.
 - Delete `~/.nikitai_token_cache.json` to force a fresh login / revoke local access.
 
+## Local machine state (deployment checklist)
+
+These files/folders live **outside the repo and outside git entirely** — they do not
+transfer via `git pull`, any CI/CD step, or any deploy script. They must exist on
+whichever machine is actually running the server. **Run through this checklist before
+or during any new deployment (e.g. moving to Raspberry Pi hosting).** Each new
+local-file-dependent tool domain added in the future should get an entry added here
+as a standing convention.
+
+### `~/.nikitai_token_cache.json`
+**Purpose:** Outlook/MSAL token cache (Organiser sub-agent).
+**Regenerates automatically:** Yes. Log in once via the device-code flow on the new
+machine; the cache is recreated. No manual copy needed.
+
+### `~/.nikitai_garmin_session/`
+**Purpose:** Garmin session cache, including the rate-limit cooldown sentinel
+(Trainer sub-agent).
+**Regenerates automatically:** Partially. The directory and token cache regenerate on
+first successful login on the new machine. However, a fresh login may hit Garmin's
+rate limiting — the SSO block is tied to client ID + account and typically lasts ~24h,
+with every login attempt extending the window (see LLM_CONTEXT_LOG.md entries for
+2026-08-16). Do the first login deliberately and wait for it to succeed; do not
+repeatedly retry.
+
+### Folder pointed at by `NIKITAI_HOME_INFRA_NOTES_DIR`
+**Purpose:** User's hand-maintained network/hosting notes (Platform Nerd sub-agent).
+**Regenerates automatically:** **No.** This is your private notes directory.
+**Manual copy required:** Copy the entire folder from the old machine to the new one
+(scp, USB, etc.), then update `.env` on the new machine to point at wherever it ends
+up living there (the path does not need to match the old machine).
+
+### File pointed at by `NIKITAI_WIZ_LIGHTS_CONFIG`
+**Purpose:** WiZ bulb friendly-name → IP mapping JSON file (Home Wizard sub-agent).
+**Regenerates automatically:** **No.** This is a local config you create.
+**Manual copy required:** Same as above — copy the JSON file to the new machine and
+update `.env` to point at its new location.
+
+---
+
 License
 -------
 MIT

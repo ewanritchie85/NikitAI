@@ -2,7 +2,7 @@
 
 Purpose: single-file, high-signal project state for IDE LLMs and humans.
 
-Last updated: 2026-08-16
+Last updated: 2026-08-24
 Owner: project maintainers + any active coding agent
 
 ## 1. Current Snapshot
@@ -17,7 +17,7 @@ Owner: project maintainers + any active coding agent
 
 ## 2. What This Project Does
 
-NikitAI is an AI-powered assistant that integrates with Microsoft Graph (Outlook mail/calendar), Garmin Connect health/fitness data, and Anthropic models.
+NikitAI is an AI-powered assistant that integrates with Microsoft Graph (Outlook mail/calendar), Garmin Connect health/fitness data, WiZ smart lighting, and Anthropic models.
 
 Core capabilities currently in repo:
 - Read/search mailbox content
@@ -27,6 +27,7 @@ Core capabilities currently in repo:
 - Manage mail folders (list/create/delete; destructive actions are gated)
 - Fitness training coach over read-only Garmin data (activities, daily summary,
   sleep, body battery, profile, body composition) — no write-back to Garmin yet
+- Smart home automation — currently WiZ lighting control (on/off, dimming, colour)
 - Web UI + CLI interfaces over shared agent logic
 
 ## 3. Architecture At A Glance
@@ -45,9 +46,13 @@ Core capabilities currently in repo:
     platform_nerd_agent_config()
   - subagents/trainer.py: NikitAI Trainer prompt/tools/_execute_trainer_tool/
     trainer_agent_config()
+  - subagents/home_wizard.py: Home Wizard prompt/tools/_execute_home_wizard_tool/
+    home_wizard_agent_config()
 - Auth/token handling: src/nikitai/auth.py
 - Outlook/Graph tools: src/nikitai/tools/outlook.py
 - Home-infra notes tools: src/nikitai/tools/logs.py (Platform Nerd's read/append tools)
+- WiZ smart lighting tools: src/nikitai/tools/wiz.py (Home Wizard's tools; local UDP
+  control via pywizlight; config file path from NIKITAI_WIZ_LIGHTS_CONFIG)
 - Garmin health/fitness tools: src/nikitai/tools/garmin.py (Trainer's read-only tools;
   lazy Garmin client from GARMIN_CONNECT_USERNAME/PASSWORD + on-disk session at
   ~/.nikitai_garmin_session via the library's built-in token store)
@@ -65,9 +70,11 @@ Design notes:
     (NikitAI Organiser), "platform_nerd" ->
     subagents.platform_nerd.platform_nerd_agent_config() (NikitAI Platform Nerd: home
     network / self-hosting / Raspberry Pi / general networking, backed by
-    tools/logs.py), and "trainer" -> subagents.trainer.trainer_agent_config()
-    (NikitAI Trainer: Garmin health/fitness, backed by tools/garmin.py). Each
-    factory has exactly ONE canonical import path — its own
+    tools/logs.py), "trainer" -> subagents.trainer.trainer_agent_config()
+    (NikitAI Trainer: Garmin health/fitness, backed by tools/garmin.py), and
+    "home_wizard" -> subagents.home_wizard.home_wizard_agent_config()
+    (NikitAI Home Wizard: WiZ smart lighting control, backed by tools/wiz.py).
+    Each factory has exactly ONE canonical import path — its own
     subagents module; orchestrator imports them only to populate the registry and
     does NOT re-export them. resolve_router_model() / DEFAULT_ROUTER_MODEL live in
     orchestrator.py (routing is an orchestrator concern, not core Agent infra).
@@ -123,6 +130,18 @@ Design notes:
 - Platform Nerd file access is confined to NIKITAI_HOME_INFRA_NOTES_DIR: path traversal / absolute / symlink-escape rejected; append is pure-append to existing .txt files only (no create/overwrite/delete). append_to_log is confirmation-gated.
 - Trainer access to Garmin Connect is READ-ONLY (recent activities, activity details, daily summary, sleep, body battery, profile, body composition) — no write-back to the account in v1 (no workout logging, no weigh-ins), and no confirmation-gated tools in this domain yet (confirmation_required_tools is empty, though the read-only design keeps escalation trivial for any future write tools). Credentials come from GARMIN_CONNECT_USERNAME/GARMIN_CONNECT_PASSWORD via an UNOFFICIAL client (garminconnect, Cyberjunky's) using real account credentials rather than OAuth — a dedicated, non-critical account is recommended; the token/session cache lives outside the repo at ~/.nikitai_garmin_session.
 - The web UI is login-gated (single-user username + argon2id-hashed password via env vars NIKITAI_WEB_USERNAME/NIKITAI_WEB_PASSWORD_HASH). Every route except /login, /logout, and the /static assets (shared CSS/JS, no secrets) requires a signed HttpOnly session cookie; login attempts are rate-limited (5 per 15 min per IP, in-memory); sessions expire after NIKITAI_WEB_SESSION_TTL (default 12h); NIKITAI_WEB_SECRET signs cookies (random per-process when unset → sign-out on restart); NIKITAI_WEB_HTTPS_ONLY=true marks the cookie Secure-only behind TLS. Fails closed: with no hash configured the login page is shown but no credential can succeed.
+
+**Local state files live outside the repo and git.** Four paths must exist on the machine
+actually running the server; they do not transfer via `git pull` or any deploy step.
+See the "Local machine state" checklist in README.md for the authoritative list with
+regeneration/copy instructions per file:
+- `~/.nikitai_token_cache.json` (Outlook/MSAL token cache — auto-regenerates on device-code login)
+- `~/.nikitai_garmin_session/` (Garmin session + rate-limit cooldown sentinel — partial auto-regeneration, first login may hit Garmin SSO block)
+- `NIKITAI_HOME_INFRA_NOTES_DIR` folder (Platform Nerd notes — **manual copy required**, does not regenerate)
+- `NIKITAI_WIZ_LIGHTS_CONFIG` file (WiZ bulb name→IP mapping — **manual copy required**, does not regenerate)
+
+Each new local-file-dependent tool domain added in the future should get an entry
+added to that README checklist as a standing convention.
 
 ## 5. Build, Test, and Quality Commands
 
@@ -184,6 +203,38 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-24 - NikitAI Home Wizard sub-agent (WiZ smart lighting)
+- Scope: src/nikitai/tools/wiz.py (new), src/nikitai/subagents/home_wizard.py (new),
+  src/nikitai/orchestrator.py, requirements.txt, pyproject.toml, .env.example,
+  tests/test_wiz.py (new), tests/test_home_wizard.py (new), tests/test_orchestrator.py,
+  LLM_CONTEXT_LOG.md
+- Summary: Built and registered the Home Wizard sub-agent for smart home automation,
+  initially scoped to WiZ smart lighting via local UDP (pywizlight). tools/wiz.py:
+  config loader reading JSON from NIKITAI_WIZ_LIGHTS_CONFIG (friendly name -> IP
+  mapping); five synchronous tool wrappers around async pywizlight calls
+  (list_lights, get_light_state, turn_on, turn_off, set_brightness) using
+  asyncio.run; clear error types (WizConfigError, WizLightNotFoundError,
+  WizConnectionError) surfaced as "Tool error: ..." via dispatcher.
+  subagents/home_wizard.py: system prompt establishing practical lighting assistant
+  that calls list_lights when unsure, asks for clarification on unknown/ambiguous
+  lights; five tool definitions; empty confirmation_required_tools (lighting runs
+  immediately); model via resolve_model("NIKITAI_HOME_WIZARD_MODEL").
+  orchestrator.py: added "home_wizard" SubAgentSpec to SUB_AGENT_REGISTRY.
+  .env.example: documented NIKITAI_WIZ_LIGHTS_CONFIG (path to local JSON config)
+  and NIKITAI_HOME_WIZARD_MODEL (optional per-sub-agent model override).
+- Why: extend NikitAI into home automation with a local-first, no-cloud approach;
+  WiZ bulbs are a common starting point; config-file pattern mirrors Platform Nerd's
+  notes directory for security and portability.
+- Impact: lighting commands ("turn on the bedroom lamp", "dim the desk light to 30%")
+  now route to Home Wizard. No cloud account/API key needed; bulbs controlled over
+  LAN. Confirmation-free for all lighting actions (read-write but low-risk).
+- Validation: `make test` → 233 passed (was ~200; +17 wiz tools, +13 home_wizard
+  config/dispatcher, +2 orchestrator registry/routing). `ruff check` + `ruff format`
+  clean.
+- Follow-ups: extend to other domains (e.g. Spotify, climate control) by adding
+  tools and extending the system prompt; consider scenes/groups for multi-light
+  commands.
 
 ### 2026-08-18 - Trainer gains profile + body-composition tools
 - Scope: src/nikitai/tools/garmin.py, src/nikitai/subagents/trainer.py, tests/{test_garmin,test_trainer}.py, docs/nikitai-architecture.html, README.md, LLM_CONTEXT_LOG.md

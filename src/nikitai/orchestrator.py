@@ -33,6 +33,7 @@ from typing import Any
 import anthropic
 
 from .agent import Agent, AgentResponse
+from .subagents.home_wizard import home_wizard_agent_config
 from .subagents.organiser import outlook_agent_config
 from .subagents.platform_nerd import platform_nerd_agent_config
 from .subagents.trainer import trainer_agent_config
@@ -99,6 +100,13 @@ SUB_AGENT_REGISTRY: dict[str, SubAgentSpec] = {
         description="fitness, workouts, sleep, recovery, and general health/training "
         "questions based on Garmin Connect data.",
         config_factory=trainer_agent_config,
+    ),
+    "home_wizard": SubAgentSpec(
+        key="home_wizard",
+        display_name="NikitAI Home Wizard",
+        description="smart home automation — currently lighting control: turning lights "
+        "on/off, dimming, changing colour.",
+        config_factory=home_wizard_agent_config,
     ),
 }
 
