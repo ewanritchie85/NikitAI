@@ -386,7 +386,7 @@
         <tr><td><span class="role">Organiser</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Turns vague instructions into polished email drafts and precise tool calls</span></td></tr>
         <tr><td><span class="role">Platform Nerd</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Real reasoning over networking principles, not just file lookup</span></td></tr>
         <tr><td><span class="role">Trainer</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Bespoke health & fitness coaching grounded in your Garmin data</span></td></tr>
-        <tr><td><span class="role">Home Wizard</span></td><td><code>claude-sonnet-5</code></td><td><span class="role">Local smart home control (WiZ lighting over UDP, no cloud)</span></td></tr>
+        <tr><td><span class="role">Home Wizard</span></td><td><code>claude-haiku-4-5</code></td><td><span class="role">Local smart home control (WiZ lighting over UDP, no cloud)</span></td></tr>
       </tbody>
     </table>
   </section>
@@ -476,7 +476,7 @@ trainer: {
   home_wizard: {
     name: 'Home Wizard',
     domain: 'Smart home — WiZ lighting',
-    model: 'claude-sonnet-5',
+    model: 'claude-haiku-4-5',
     desc: 'Direct local control of WiZ smart bulbs over UDP — no cloud, no accounts, just LAN. Turn lights on/off, dim, set colours. Calls list_lights when unsure what is available; asks for clarification if a light name is unknown or ambiguous.',
     tools: [
       ['list_lights', '', 'friendly names from your local JSON config file'],
