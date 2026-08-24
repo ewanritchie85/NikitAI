@@ -99,17 +99,20 @@ async def _turn_on(ip: str, brightness: int | None, rgb: list[int] | None) -> di
         if rgb is not None:
             if not (isinstance(rgb, list) and len(rgb) == 3 and all(0 <= c <= 255 for c in rgb)):
                 raise ValueError("rgb must be a list of three integers 0-255")
-            # pywizlight expects RGB values as floats 0-1 or ints 0-255
             kwargs["rgb"] = tuple(rgb)
         builder = PilotBuilder(**kwargs)
         await bulb.turn_on(builder)
-        state = await bulb.updateState()
-        raw_rgb = state.get_rgb()
-        return {
-            "on": state.get_state(),
-            "brightness": state.get_brightness(),
-            "rgb": list(raw_rgb) if raw_rgb is not None else None,
-        }
+        # Best-effort state readback; don't fail the operation if it times out
+        try:
+            state = await bulb.updateState()
+            raw_rgb = state.get_rgb()
+            return {
+                "on": state.get_state(),
+                "brightness": state.get_brightness(),
+                "rgb": list(raw_rgb) if raw_rgb is not None else None,
+            }
+        except Exception:
+            return {"on": True, "brightness": brightness, "rgb": rgb}
     except Exception as exc:
         raise WizConnectionError(f"Failed to reach bulb at {ip}: {exc}") from exc
     finally:
@@ -121,13 +124,17 @@ async def _turn_off(ip: str) -> dict[str, Any]:
     bulb = wizlight(ip)
     try:
         await bulb.turn_off()
-        state = await bulb.updateState()
-        raw_rgb = state.get_rgb()
-        return {
-            "on": state.get_state(),
-            "brightness": state.get_brightness(),
-            "rgb": list(raw_rgb) if raw_rgb is not None else None,
-        }
+        # Best-effort state readback; don't fail the operation if it times out
+        try:
+            state = await bulb.updateState()
+            raw_rgb = state.get_rgb()
+            return {
+                "on": state.get_state(),
+                "brightness": state.get_brightness(),
+                "rgb": list(raw_rgb) if raw_rgb is not None else None,
+            }
+        except Exception:
+            return {"on": False, "brightness": 0, "rgb": None}
     except Exception as exc:
         raise WizConnectionError(f"Failed to reach bulb at {ip}: {exc}") from exc
     finally:
@@ -141,13 +148,17 @@ async def _set_brightness(ip: str, level: int) -> dict[str, Any]:
     bulb = wizlight(ip)
     try:
         await bulb.turn_on(PilotBuilder(brightness=level))
-        state = await bulb.updateState()
-        raw_rgb = state.get_rgb()
-        return {
-            "on": state.get_state(),
-            "brightness": state.get_brightness(),
-            "rgb": list(raw_rgb) if raw_rgb is not None else None,
-        }
+        # Best-effort state readback; don't fail the operation if it times out
+        try:
+            state = await bulb.updateState()
+            raw_rgb = state.get_rgb()
+            return {
+                "on": state.get_state(),
+                "brightness": state.get_brightness(),
+                "rgb": list(raw_rgb) if raw_rgb is not None else None,
+            }
+        except Exception:
+            return {"on": True, "brightness": level, "rgb": None}
     except Exception as exc:
         raise WizConnectionError(f"Failed to reach bulb at {ip}: {exc}") from exc
     finally:
