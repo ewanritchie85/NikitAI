@@ -42,9 +42,8 @@ def test_trainer_config_shape(monkeypatch):
 
 def test_trainer_config_model_falls_back_to_default(monkeypatch):
     monkeypatch.delenv("NIKITAI_TRAINER_MODEL", raising=False)
-    monkeypatch.setenv("NIKITAI_DEFAULT_MODEL", "shared-default")
 
-    assert trainer.trainer_agent_config()["model"] == "shared-default"
+    assert trainer.trainer_agent_config()["model"] == "claude-sonnet-5"
 
 
 # ── _execute_trainer_tool ────────────────────────────────────────────────────

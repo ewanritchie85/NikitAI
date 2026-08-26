@@ -194,5 +194,5 @@ def home_wizard_agent_config() -> dict[str, Any]:
         "tool_definitions": HOME_WIZARD_TOOL_DEFINITIONS,
         "tool_dispatcher": _execute_home_wizard_tool,
         "confirmation_required_tools": HOME_WIZARD_CONFIRMATION_REQUIRED_TOOLS,
-        "model": resolve_model("NIKITAI_HOME_WIZARD_MODEL"),
+        "model": resolve_model("NIKITAI_HOME_WIZARD_MODEL", "claude-haiku-4-5"),
     }

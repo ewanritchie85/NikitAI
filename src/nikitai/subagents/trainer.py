@@ -205,5 +205,5 @@ def trainer_agent_config() -> dict[str, Any]:
         "tool_definitions": TRAINER_TOOL_DEFINITIONS,
         "tool_dispatcher": _execute_trainer_tool,
         "confirmation_required_tools": TRAINER_CONFIRMATION_REQUIRED_TOOLS,
-        "model": resolve_model("NIKITAI_TRAINER_MODEL"),
+        "model": resolve_model("NIKITAI_TRAINER_MODEL", "claude-sonnet-5"),
     }

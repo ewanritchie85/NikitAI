@@ -140,5 +140,5 @@ def platform_nerd_agent_config() -> dict[str, Any]:
         "tool_definitions": PLATFORM_NERD_TOOL_DEFINITIONS,
         "tool_dispatcher": _execute_platform_nerd_tool,
         "confirmation_required_tools": PLATFORM_NERD_CONFIRMATION_REQUIRED_TOOLS,
-        "model": resolve_model("NIKITAI_PLATFORM_NERD_MODEL"),
+        "model": resolve_model("NIKITAI_PLATFORM_NERD_MODEL", "claude-sonnet-5"),
     }

@@ -303,5 +303,5 @@ def outlook_agent_config() -> dict[str, Any]:
         "tool_definitions": TOOL_DEFINITIONS,
         "tool_dispatcher": _execute_tool,
         "confirmation_required_tools": CONFIRMATION_REQUIRED_TOOLS,
-        "model": resolve_model("NIKITAI_ORGANISER_MODEL"),
+        "model": resolve_model("NIKITAI_ORGANISER_MODEL", "claude-sonnet-5"),
     }

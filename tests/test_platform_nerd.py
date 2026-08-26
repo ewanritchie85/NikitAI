@@ -34,9 +34,8 @@ def test_platform_nerd_config_shape(monkeypatch):
 
 def test_platform_nerd_config_model_falls_back_to_default(monkeypatch):
     monkeypatch.delenv("NIKITAI_PLATFORM_NERD_MODEL", raising=False)
-    monkeypatch.setenv("NIKITAI_DEFAULT_MODEL", "shared-default")
 
-    assert platform_nerd.platform_nerd_agent_config()["model"] == "shared-default"
+    assert platform_nerd.platform_nerd_agent_config()["model"] == "claude-sonnet-5"
 
 
 # ── _execute_platform_nerd_tool ───────────────────────────────────────────────

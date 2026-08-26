@@ -426,16 +426,8 @@ def test_resolve_router_model_prefers_router_override(monkeypatch):
     assert orchestrator.resolve_router_model() == "router-override"
 
 
-def test_resolve_router_model_falls_back_to_default(monkeypatch):
-    monkeypatch.delenv("NIKITAI_ROUTER_MODEL", raising=False)
-    monkeypatch.setenv("NIKITAI_DEFAULT_MODEL", "shared-default")
-
-    assert orchestrator.resolve_router_model() == "shared-default"
-
-
 def test_resolve_router_model_falls_back_to_hardcoded(monkeypatch):
     monkeypatch.delenv("NIKITAI_ROUTER_MODEL", raising=False)
-    monkeypatch.delenv("NIKITAI_DEFAULT_MODEL", raising=False)
 
     assert orchestrator.resolve_router_model() == orchestrator.DEFAULT_ROUTER_MODEL
 

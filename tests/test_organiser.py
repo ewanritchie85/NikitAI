@@ -229,6 +229,5 @@ def test_outlook_config_uses_organiser_override(monkeypatch):
 
 def test_outlook_config_falls_back_to_default_model(monkeypatch):
     monkeypatch.delenv("NIKITAI_ORGANISER_MODEL", raising=False)
-    monkeypatch.setenv("NIKITAI_DEFAULT_MODEL", "shared-default")
 
-    assert organiser.outlook_agent_config()["model"] == "shared-default"
+    assert organiser.outlook_agent_config()["model"] == "claude-sonnet-5"

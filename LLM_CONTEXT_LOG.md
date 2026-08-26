@@ -12,7 +12,7 @@ Owner: project maintainers + any active coding agent
 - Version: 0.1.0
 - Python: >=3.12 (pyenv 3.12.14, pinned in .python-version)
 - Main branch: main
-- Last known commit: d882908 (Platform Nerd answers succinctly first, expands only on request)
+- Last known commit: <current> (Remove NIKITAI_DEFAULT_MODEL fallback; per-agent model env vars with hardcoded defaults)
 - Working tree status at log creation: clean
 
 ## 2. What This Project Does
@@ -79,7 +79,7 @@ Design notes:
     does NOT re-export them. resolve_router_model() / DEFAULT_ROUTER_MODEL live in
     orchestrator.py (routing is an orchestrator concern, not core Agent infra).
   - send(): a cheap classification call (resolve_router_model():
-    NIKITAI_ROUTER_MODEL → NIKITAI_DEFAULT_MODEL → "claude-haiku-4-5") picks a
+    NIKITAI_ROUTER_MODEL → "claude-haiku-4-5") picks a
     registered key or "unclear". A known key is dispatched to that sub-agent's
     Agent.send(); "unclear"/unknown returns a clarifying question naming only
     active sub-agents (never a default fallthrough).
@@ -114,10 +114,13 @@ Design notes:
   (env, no default — raises if unset). All paths are resolved and confirmed inside that
   dir (rejects ../, absolute paths, and symlinks escaping the dir). append_to_log is
   pure-append only: never creates/truncates/overwrites, requires an existing .txt file.
-- Model selection is per sub-agent via agent.resolve_model(specific_env_var):
-  specific override → NIKITAI_DEFAULT_MODEL → agent.DEFAULT_MODEL ("claude-sonnet-5").
-  organiser uses NIKITAI_ORGANISER_MODEL; platform_nerd uses NIKITAI_PLATFORM_NERD_MODEL;
-  trainer uses NIKITAI_TRAINER_MODEL. The legacy NIKITAI_MODEL var is no longer read anywhere.
+- Model selection is per sub-agent via agent.resolve_model(specific_env_var, hardcoded_default):
+  specific override → hardcoded default. No shared fallback.
+  organiser uses NIKITAI_ORGANISER_MODEL → "claude-sonnet-5";
+  platform_nerd uses NIKITAI_PLATFORM_NERD_MODEL → "claude-sonnet-5";
+  trainer uses NIKITAI_TRAINER_MODEL → "claude-sonnet-5";
+  home_wizard uses NIKITAI_HOME_WIZARD_MODEL → "claude-haiku-4-5".
+  Router uses NIKITAI_ROUTER_MODEL → "claude-haiku-4-5".
 - cli.py and web.py now construct a single lazy Orchestrator (not a single Agent).
   web.get_agent() returns the Orchestrator; route handler shapes are unchanged.
 - Approval-required operations return pending confirmation state instead of auto-executing.
@@ -174,6 +177,7 @@ Parallel/secondary tracks:
 ## 7. Recent Change Signal
 
 Recent commits (most recent first):
+- <current> Remove NIKITAI_DEFAULT_MODEL fallback; per-agent model env vars with hardcoded defaults
 - d882908 Platform Nerd answers succinctly first, expands only on request
 - a0e17f7 Stream web chat replies via SSE so text renders as it arrives
 - 817c65d Trainer answers succinctly first, expands only on request
@@ -203,6 +207,14 @@ After each meaningful code change, append a new entry under "Change Log Entries"
 Keep entries factual and short. Prefer links/paths over long prose.
 
 ## 10. Change Log Entries
+
+### 2026-08-26 - Remove NIKITAI_DEFAULT_MODEL fallback; per-agent model env vars with hardcoded defaults
+- Scope: src/nikitai/agent.py, src/nikitai/orchestrator.py, src/nikitai/subagents/{organiser,platform_nerd,trainer,home_wizard}.py, tests/test_{agent,organiser,platform_nerd,trainer,home_wizard,orchestrator}.py, LLM_CONTEXT_LOG.md
+- Summary: Eliminated the shared `NIKITAI_DEFAULT_MODEL` fallback from model resolution. Each sub-agent now uses its dedicated env var with a hardcoded default passed directly to `resolve_model()`. Router uses `NIKITAI_ROUTER_MODEL` with `DEFAULT_ROUTER_MODEL` ("claude-haiku-4-5"). Sub-agents: Organiser/Platform Nerd/Trainer → `NIKITAI_<AGENT>_MODEL` → `claude-sonnet-5`; Home Wizard → `NIKITAI_HOME_WIZARD_MODEL` → `claude-haiku-4-5`. Removed `DEFAULT_MODEL` constant from agent.py. Updated `resolve_model()` signature to require `default_model` parameter. Updated all sub-agent configs to pass their specific default. Updated `resolve_router_model()` to skip `NIKITAI_DEFAULT_MODEL`.
+- Why: Simpler, explicit model configuration per the .env.example pattern; removes an ambiguous shared fallback that was never set in practice.
+- Impact: Model selection is now fully explicit via dedicated env vars. No runtime behavior change if env vars are already set; if unset, agents use their hardcoded defaults (same values as before).
+- Validation: `make test` → 231 passed (was 233; tests updated to match new signature and expectations). `make lint` clean.
+- Follow-ups: Update SOLUTION_OVERVIEW.md to reflect new model resolution.
 
 ### 2026-08-24 - NikitAI Home Wizard sub-agent (WiZ smart lighting)
 - Scope: src/nikitai/tools/wiz.py (new), src/nikitai/subagents/home_wizard.py (new),

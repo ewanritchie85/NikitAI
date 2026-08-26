@@ -81,24 +81,15 @@ def _stream_response(chunks: list[str], content: list, stop_reason: str) -> _Fak
 
 def test_resolve_model_prefers_specific_override(monkeypatch):
     monkeypatch.setenv("NIKITAI_ORGANISER_MODEL", "override-model")
-    monkeypatch.setenv("NIKITAI_DEFAULT_MODEL", "default-model")
 
-    assert agent.resolve_model("NIKITAI_ORGANISER_MODEL") == "override-model"
+    assert agent.resolve_model("NIKITAI_ORGANISER_MODEL", "hardcoded-default") == "override-model"
 
 
-def test_resolve_model_falls_back_to_default_when_specific_unset(monkeypatch):
+def test_resolve_model_falls_back_to_hardcoded_when_specific_unset(monkeypatch):
     monkeypatch.delenv("NIKITAI_ORGANISER_MODEL", raising=False)
-    monkeypatch.setenv("NIKITAI_DEFAULT_MODEL", "default-model")
 
-    assert agent.resolve_model("NIKITAI_ORGANISER_MODEL") == "default-model"
-
-
-def test_resolve_model_falls_back_to_hardcoded_when_nothing_set(monkeypatch):
-    monkeypatch.delenv("NIKITAI_ORGANISER_MODEL", raising=False)
-    monkeypatch.delenv("NIKITAI_DEFAULT_MODEL", raising=False)
-
-    assert agent.DEFAULT_MODEL == "claude-sonnet-5"
-    assert agent.resolve_model("NIKITAI_ORGANISER_MODEL") == agent.DEFAULT_MODEL
+    result = agent.resolve_model("NIKITAI_ORGANISER_MODEL", "hardcoded-default")
+    assert result == "hardcoded-default"
 
 
 # ── build_system_prompt ───────────────────────────────────────────────────────

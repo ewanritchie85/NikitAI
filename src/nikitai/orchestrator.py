@@ -38,8 +38,8 @@ from .subagents.organiser import outlook_agent_config
 from .subagents.platform_nerd import platform_nerd_agent_config
 from .subagents.trainer import trainer_agent_config
 
-# Last-resort router model if neither NIKITAI_ROUTER_MODEL nor NIKITAI_DEFAULT_MODEL
-# is set. A cheap/fast model is preferred here since routing is a tiny classification.
+# Last-resort router model if NIKITAI_ROUTER_MODEL is not set.
+# A cheap/fast model is preferred here since routing is a tiny classification.
 # Routing/classification is an orchestrator-level concern, not core Agent infra, so
 # this lives here rather than in agent.py.
 DEFAULT_ROUTER_MODEL = "claude-haiku-4-5"
@@ -48,15 +48,10 @@ DEFAULT_ROUTER_MODEL = "claude-haiku-4-5"
 def resolve_router_model() -> str:
     """Resolve the orchestrator's routing model.
 
-    Order: ``NIKITAI_ROUTER_MODEL`` → ``NIKITAI_DEFAULT_MODEL`` →
-    :data:`DEFAULT_ROUTER_MODEL`. Resolved per call so tests and runtime env changes
-    are honored without needing to reimport the module.
+    Order: ``NIKITAI_ROUTER_MODEL`` → :data:`DEFAULT_ROUTER_MODEL`.
+    Resolved per call so tests and runtime env changes are honored.
     """
-    return (
-        os.environ.get("NIKITAI_ROUTER_MODEL")
-        or os.environ.get("NIKITAI_DEFAULT_MODEL")
-        or DEFAULT_ROUTER_MODEL
-    )
+    return os.environ.get("NIKITAI_ROUTER_MODEL") or DEFAULT_ROUTER_MODEL
 
 
 @dataclass(frozen=True)
@@ -77,8 +72,7 @@ class SubAgentSpec:
 # ── Sub-agent registry ───────────────────────────────────────────────────────
 # All fully-implemented sub-agents belong here; each factory has exactly one
 # canonical import path (its own subagents module) and resolves its model via
-# agent.resolve_model("<SPECIFIC>_MODEL"), which falls back to
-# NIKITAI_DEFAULT_MODEL — matching outlook_agent_config().
+# agent.resolve_model("<SPECIFIC>_MODEL", "<hardcoded_default>").
 SUB_AGENT_REGISTRY: dict[str, SubAgentSpec] = {
     "organiser": SubAgentSpec(
         key="organiser",

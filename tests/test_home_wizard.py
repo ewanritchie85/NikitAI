@@ -40,9 +40,8 @@ def test_home_wizard_config_shape(monkeypatch):
 
 def test_home_wizard_config_model_falls_back_to_default(monkeypatch):
     monkeypatch.delenv("NIKITAI_HOME_WIZARD_MODEL", raising=False)
-    monkeypatch.setenv("NIKITAI_DEFAULT_MODEL", "shared-default")
 
-    assert home_wizard.home_wizard_agent_config()["model"] == "shared-default"
+    assert home_wizard.home_wizard_agent_config()["model"] == "claude-haiku-4-5"
 
 
 # ── _execute_home_wizard_tool ─────────────────────────────────────────────────

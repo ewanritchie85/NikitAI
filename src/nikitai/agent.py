@@ -21,10 +21,6 @@ import anthropic
 
 from .auth import get_access_token
 
-# Last-resort model if neither a sub-agent's specific override nor the shared
-# NIKITAI_DEFAULT_MODEL is set in the environment.
-DEFAULT_MODEL = "claude-sonnet-5"
-
 # Default timezone used when building a system prompt's current-time anchor.
 UK_TIMEZONE = ZoneInfo("Europe/London")
 
@@ -32,16 +28,13 @@ UK_TIMEZONE = ZoneInfo("Europe/London")
 ToolDispatcher = Callable[[str, dict[str, Any], str], "tuple[str, str | None]"]
 
 
-def resolve_model(specific_env_var: str) -> str:
-    """Resolve a sub-agent's model with a clear precedence chain.
+def resolve_model(specific_env_var: str, default_model: str) -> str:
+    """Resolve a sub-agent's model.
 
     Order: the sub-agent's own override (``specific_env_var``) →
-    ``NIKITAI_DEFAULT_MODEL`` → hardcoded :data:`DEFAULT_MODEL`. This lets each
-    sub-agent pick a model appropriate to its workload while sharing one default.
+    hardcoded ``default_model``. No shared fallback.
     """
-    return (
-        os.environ.get(specific_env_var) or os.environ.get("NIKITAI_DEFAULT_MODEL") or DEFAULT_MODEL
-    )
+    return os.environ.get(specific_env_var) or default_model
 
 
 def build_system_prompt(template: str, tz: ZoneInfo = UK_TIMEZONE) -> str:
@@ -183,7 +176,7 @@ class Agent:
         tool_definitions: list[dict],
         tool_dispatcher: ToolDispatcher,
         confirmation_required_tools: set[str],
-        model: str = DEFAULT_MODEL,
+        model: str = "claude-sonnet-5",
     ) -> None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
